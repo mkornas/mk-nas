@@ -23,7 +23,9 @@ services:
     environment:
       TZ: ${TZ:-UTC}
       DRIVE_NAS_SOCKET: /run/mk-nas.sock
-      DRIVE_PASSWORD_LOGIN: ${DRIVE_PASSWORD_LOGIN:-on}
+      # password sign-in: on, local (the local network only; through the tunnel the drive offers single sign-on alone) or
+      # off. Unset, an admin chooses it on the drive's Settings → Sign-in; set in .env, it wins and the page shows it read-only
+      DRIVE_PASSWORD_LOGIN: ${DRIVE_PASSWORD_LOGIN:-}
       # who may say where a request came from (CF-Connecting-IP, X-Forwarded-For): the box itself only. cloudflared runs
       # with host networking and reaches the drive through the published port, which the drive sees as this network's
       # gateway; everyone else's claim is ignored, so a LAN client cannot pick an address to dodge the login throttle

@@ -326,8 +326,12 @@ the settings backup keeps a copy. **Turn off** on the Network page does the
 same as emptying the line.
 
 Nothing to change in the drive's settings: the password form is on by
-default (leave `DRIVE_PASSWORD_LOGIN` as it is — `lan` would refuse sign-ins
-from outside, the app's included). Uploads of any size work; the drive
+default. With single sign-on set up, **Settings → Sign-in → Password
+sign-in → Local network only** keeps the password for home and leaves the
+internet to single sign-on; the iOS app then signs in from outside with an
+app password (**Settings → Devices**), or once at home with the password.
+`DRIVE_PASSWORD_LOGIN=on|local|off` in `/opt/mk-drive/.env` sets the same
+for good, and the page shows it read-only. Uploads of any size work; the drive
 sends them in pieces under Cloudflare's 100 MB request limit.
 
 Worth knowing:

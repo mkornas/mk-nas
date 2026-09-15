@@ -154,7 +154,8 @@ const ENV_KEYS: Record<string, (v: string) => boolean> = {
   DRIVE_UID: (v) => /^\d{1,10}$/.test(v),
   DRIVE_GID: (v) => /^\d{1,10}$/.test(v),
   TZ: (v) => /^[A-Za-z0-9_+-]{1,32}(\/[A-Za-z0-9_+-]{1,32}){0,3}$/.test(v),
-  DRIVE_PASSWORD_LOGIN: (v) => ['on', 'lan', 'off'].includes(v),
+  // empty = chosen on the drive's Settings → Sign-in; `lan` is the old name of `local`
+  DRIVE_PASSWORD_LOGIN: (v) => ['', 'on', 'local', 'lan', 'off'].includes(v),
   DRIVE_OIDC_ISSUER: (v) => {
     try {
       return plain(v) && !/\s/.test(v) && ['http:', 'https:'].includes(new URL(v).protocol);

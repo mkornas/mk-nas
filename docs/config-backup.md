@@ -33,7 +33,7 @@ directory is the container's) is replaced, never written through.
 The drive's `.env` is not copied over this box's: the file stays, and
 from the backup only these keys are taken, each value checked —
 `DRIVE_UID`, `DRIVE_GID` (digits), `TZ` (a zone name),
-`DRIVE_PASSWORD_LOGIN` (`on`, `lan`, `off`), `DRIVE_OIDC_ISSUER` (an
+`DRIVE_PASSWORD_LOGIN` (empty, `on`, `local`, `lan`, `off`), `DRIVE_OIDC_ISSUER` (an
 http(s) URL), `DRIVE_OIDC_CLIENT_ID`, `DRIVE_OIDC_CLIENT_SECRET`,
 `DRIVE_OIDC_NAME` (one line, no quotes, `$`, backslash or control
 characters inside), `CLOUDFLARE_TUNNEL_TOKEN` (a tunnel token) and
