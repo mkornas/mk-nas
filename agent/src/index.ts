@@ -13,6 +13,7 @@ import { revertIfExpired } from './network.ts';
 import { reconcileScans } from './scans.ts';
 import { Vitals } from './system.ts';
 import { run } from './run.ts';
+import { reapply } from './shares.ts';
 import { listen } from './server.ts';
 
 const audit = createAudit(config.audit);
@@ -25,6 +26,14 @@ const vitals = new Vitals({ every: config.vitalsEvery, keep: Math.round(1_800_00
 vitals.start();
 // a network change that was never confirmed goes back even if the agent was restarted in between
 await revertIfExpired(run, netConfig(config)).catch((e: Error) => console.error(`network revert failed: ${e.message}`));
+const shares = {
+  smbConf: config.smbConf,
+  exportsFile: config.exportsFile,
+  smbGroup: config.smbGroup,
+  ownerUid: config.ownerUid,
+  ownerGid: config.ownerGid,
+  hostname: hostname(),
+};
 const server = await listen({
   socket: config.socket,
   group: config.group,
@@ -63,17 +72,15 @@ const server = await listen({
       const child = spawn(full[0], full.slice(1), { detached: true, stdio: 'ignore', env });
       child.unref();
     },
-    shares: {
-      smbConf: config.smbConf,
-      exportsFile: config.exportsFile,
-      smbGroup: config.smbGroup,
-      ownerUid: config.ownerUid,
-      ownerGid: config.ownerGid,
-      hostname: hostname(),
-    },
+    shares,
   },
 });
 console.error(`mk-nasd ${config.version} on ${config.socket}`);
+// smb.conf and the exports as this version writes them (an upgrade can change a rule); nothing when they already are
+reapply((a, o) => run(a, { timeout: config.timeout, ...o }), db, shares).then(
+  (changed) => changed && console.error('share files rewritten for this version'),
+  (e: Error) => console.error(`share files not rewritten: ${e.message}`),
+);
 
 const shutdown = () => {
   events.stop();

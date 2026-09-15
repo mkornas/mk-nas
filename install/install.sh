@@ -34,6 +34,10 @@ if [[ -f $here/mk-drive-image.tgz ]]; then
   cp "$here/mk-drive-image.tgz" /opt/mk-nas/mk-drive-image.tgz
 fi
 
+# a first install shows the drive's setup code at the end; an upgrade leaves it where it is (sudo mk-nas setup-code)
+first=1
+[[ $(dpkg-query -W -f='${Status}' mk-nas 2>/dev/null || true) == 'install ok installed' ]] && first=0
+
 say "installing $(basename "$deb")"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
@@ -44,7 +48,11 @@ cat <<MSG
   agent    mk-nasd on /run/mk-nas.sock   (journalctl -u mk-nasd, audit in /var/log/mk-nas/audit.jsonl)
   cli      mk-nas health | pools | datasets | … (mk-nas --help)
   timers   mk-nas-snapshot.timer and mk-nas-replication.timer every 15 min (systemctl list-timers)
-  drive    http://$(hostname -I 2>/dev/null | awk '{print $1}'):8810   (first visit creates the admin account)
+  drive    http://$(hostname -I 2>/dev/null | awk '{print $1}'):8810   (first visit creates the admin account; it asks for the setup code)
   stack    /opt/mk-drive/docker-compose.yml + .env; systemctl status mk-drive
   upgrade  sudo apt install ./mk-nas_<version>_amd64.deb   (docs/upgrading.md)
 MSG
+code=$(sed -n 's/^[[:space:]]*DRIVE_SETUP_TOKEN[[:space:]]*=[[:space:]]*//p' /opt/mk-drive/.env 2>/dev/null | tail -1 || true)
+if [[ $first == 1 && -n $code ]]; then
+  printf '\n  setup code  \033[1m%s\033[0m   (the drive asks for it once, to create the admin account; sudo mk-nas setup-code shows it again)\n' "$code"
+fi

@@ -166,7 +166,7 @@ test('installable: only the newest checked release, newer, signed, one at a time
 });
 
 /** A release on disk, signed with a throwaway key, served by the fake GitHub; the runner's system commands faked except ssh-keygen. */
-async function signedRelease(opts: { tamperDeb?: boolean; wrongKey?: boolean; imageOnBox?: boolean; badImage?: boolean } = {}) {
+async function signedRelease(opts: { tamperDeb?: boolean; wrongKey?: boolean; imageOnBox?: boolean; loadedHere?: boolean; badImage?: boolean } = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'mk-nas-inst-'));
   const cfg = cfgIn(dir);
   const deb = Buffer.from('a debian package');
@@ -184,6 +184,8 @@ async function signedRelease(opts: { tamperDeb?: boolean; wrongKey?: boolean; im
   const pub = (await readFile(join(dir, 'key.pub'), 'utf8')).split(' ').slice(0, 2).join(' ');
   await writeFile(cfg.signers, `releases@mk-nas namespaces="mk-nas-release" ${pub}\n`);
   await writeFile(cfg.agentPackage, JSON.stringify({ version: '0.5.0' }));
+  // what load-image.sh writes after loading a checked tgz
+  if (opts.loadedHere) await writeFile(join(dir, 'mk-drive-image.id'), 'ghcr.io/o/mk-drive:0.3.1 sha256:1d\n');
   const names = ['SHA256SUMS', 'SHA256SUMS.sig', 'release.json', 'mk-nas_0.6.0_amd64.deb'];
   const g = github({
     'https://api.github.com/repos/o/mk-nas/releases/tags/v0.6.0': apiRelease(names),
@@ -197,7 +199,7 @@ async function signedRelease(opts: { tamperDeb?: boolean; wrongKey?: boolean; im
   const run: Runner = async (argv, o) => {
     calls.push(argv);
     if (argv[0] === 'ssh-keygen') return realRun(argv, o);
-    if (argv[0] === 'docker') return { argv, exitCode: opts.imageOnBox ? 0 : 1, stdout: '', stderr: '' };
+    if (argv[0] === 'docker') return { argv, exitCode: opts.imageOnBox ? 0 : 1, stdout: opts.imageOnBox ? 'sha256:1d\n' : '', stderr: '' };
     if (argv.includes('apt-get')) await writeFile(cfg.agentPackage, JSON.stringify({ version: '0.6.0' }));
     return { argv, exitCode: 0, stdout: '', stderr: '' };
   };
@@ -258,12 +260,21 @@ test('install refuses before touching the system: a tampered package, a wrong ke
       await s.done();
     }
   }
-  const s = await signedRelease({ imageOnBox: true });
+  const s = await signedRelease({ imageOnBox: true, loadedHere: true });
   try {
     const r = s.db.startUpdateRun('0.6.0', process.pid);
     await installRelease(s.ctx, '0.6.0', r.id);
-    assert.ok(!s.calls.some((c) => c[0] === '/opt/load-image.sh'), 'an image already on the box is not downloaded or loaded');
+    assert.ok(!s.calls.some((c) => c[0] === '/opt/load-image.sh'), 'an image load-image.sh loaded is not downloaded or loaded again');
   } finally {
     await s.done();
+  }
+  const t = await signedRelease({ imageOnBox: true });
+  try {
+    const r = t.db.startUpdateRun('0.6.0', process.pid);
+    await installRelease(t.ctx, '0.6.0', r.id);
+    assert.deepEqual(await readFile(t.cfg.driveImageFile), t.image, 'an image with the tag but no recorded ID is downloaded again');
+    assert.ok(t.calls.some((c) => c[0] === '/opt/load-image.sh'));
+  } finally {
+    await t.done();
   }
 });

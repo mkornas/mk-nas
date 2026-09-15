@@ -93,7 +93,13 @@ does not boot):
 
 The first start after the install takes a few minutes longer: the drive's
 image is loaded from what the stick left behind. The screen ends at a
-`login:` prompt. You can unplug the keyboard and monitor now.
+`login:` prompt, and above it the line
+`mk-nas: create the drive's admin account at http://<address>:8810 with the setup code XXXX-XXXX-XXXX`.
+**Write the setup code down** (or take a photo): the drive asks for it on
+the first visit. You can unplug the keyboard and monitor now.
+
+Root cannot log in over ssh; your own login can, with its password. To
+allow keys only, see step 10.
 
 ## After the install: the checklist
 
@@ -102,7 +108,8 @@ The steps below explain each one; this is the order.
 
 1. Pull the stick; wait for the `login:` prompt (a few extra minutes the
    first time). Keyboard and monitor can go.
-2. Open `http://<name>.local:8810` and create the admin account (step 4).
+2. Open `http://<name>.local:8810` and create the admin account with the
+   setup code from the box's screen (step 4).
 3. **Storage → Overview → Set up this NAS**: the mirror, `tank/files` as a
    location, automatic snapshots (step 5).
 4. Check that the overview is all green (step 10).
@@ -110,7 +117,8 @@ The steps below explain each one; this is the order.
    (step 7).
 6. Create `tank/settings` and turn on the settings backup (step 8).
 7. Reserve the box's address in the router (step 9).
-8. From your laptop: `ssh-copy-id`, then `sudo mk-nas health` (step 10).
+8. From your laptop: `ssh-copy-id`, then `sudo mk-nas health`; then ssh
+   with keys only (step 10).
 9. Optional: the drive from outside, in a browser and the iOS app
    (the section after step 10).
 
@@ -129,9 +137,18 @@ older routers), find the box's address in the router's list of devices, or
 log in on the box's screen and run `hostname -I`. Then
 `http://<address>:8810`.
 
-The first visit asks you to **create the admin account**: your email, a
-name, a password of at least 10 characters. That account runs the drive
-and sees the **Storage** section.
+The first visit asks you to **create the admin account**: the **setup
+code** from the box's screen, your email, a name, a password of at least 10
+characters. That account runs the drive and sees the **Storage** section.
+
+The code is there because port 8810 is open to the whole network before
+the admin account exists: without it, whoever opened the page first would
+become the admin. Lost it? Log in on the box's screen (or over ssh with the
+login you made during the install) and run `sudo mk-nas setup-code`. On a
+stock Ubuntu Server, `install.sh` printed it at the end. Once the account
+exists the drive no longer uses the code; the line above the login prompt
+stays until you delete it (`sudo rm /etc/issue.d/mk-nas.issue`), which is
+harmless either way.
 
 ## 5. Make the pool
 
@@ -227,7 +244,33 @@ ssh <user>@<name>.local sudo mk-nas health   # "OK — every pool online, every 
 ssh <user>@<name>.local sudo mk-nas version  # the agent's version; the drive's is at the foot of its sidebar
 ```
 
-`sudo` on the box still asks for its password; that is on purpose.
+`sudo` on the box still asks for its password; that is on purpose. For
+the same reason your login is not in the `docker` group (membership there is
+root without a password); the docs use `sudo docker`. A box first installed
+with an older mk-nas release had its first user added to that group, and an
+upgrade does not take it away: see it with `groups`, and if you want the
+password back in front of docker, `sudo gpasswd -d <user> docker` (it takes
+effect at the next login).
+
+**Keys only for ssh (recommended once `ssh-copy-id` works).** The install
+leaves password logins on, so the first login works without a key; root
+cannot log in over ssh at all. After `ssh-copy-id`, check that
+`ssh <user>@<name>.local` no longer asks for a password, then on the box:
+
+```
+echo 'PasswordAuthentication no' | sudo tee /etc/ssh/sshd_config.d/01-keys-only.conf
+sudo systemctl reload ssh
+sudo sshd -T | grep -i passwordauthentication   # passwordauthentication no
+```
+
+The file name must sort before `50-cloud-init.conf`, where the installer
+writes its "passwords yes": ssh takes the first value it reads. Keep the
+ssh session open while you try a new one from another terminal. If you
+would rather bring your keys to the install itself, list them under
+`authorized-keys` in the `ssh` section of `install/autoinstall/user-data`,
+or add `ssh` to its
+`interactive-sections` for the installer's own SSH screen (it imports keys
+from GitHub or Launchpad), before `make iso`.
 
 **What now runs by itself**, with nothing to do: the automatic snapshots
 and their pruning (a dataset nothing was written to since its last
@@ -337,10 +380,11 @@ Worth knowing:
 | --- | --- |
 | The drive does not open on port 8810 | Give the first start five minutes. Then on the box: `systemctl status mk-drive`, `sudo docker ps`, `journalctl -u mk-drive -n 50` |
 | "The NAS agent did not answer" on a Storage page | `systemctl status mk-nasd`, `journalctl -u mk-nasd -n 50` |
-| `docker compose pull` says denied | `sudo docker login ghcr.io` with a token that can read packages |
+| `mk-drive` does not start and the log says the image is not on this box | The image file did not load or did not match the pinned checksum: `journalctl -u mk-drive -n 50`, then install the release again (`make upgrade HOST=…`) |
 | A data disk is not listed | BIOS SATA mode (AHCI), the cable, `lsblk` on the box |
 | A disk says **FAILING** or pending sectors | Storage → Disks → the disk → a long self-test; plan a replacement. Replace from the Pools page, next to the disk |
 | Pool **DEGRADED** | The pool still works. Pools page: what ZFS says, and **Replace…** next to the missing disk |
+| The drive asks for a setup code | On the box: `sudo mk-nas setup-code` |
 | Forgot the drive's admin password | On the box: `sudo docker exec -it mk-drive node src/cli.ts password <email>` |
 | Every call the agent made | `sudo tail -f /var/log/mk-nas/audit.jsonl` |
 

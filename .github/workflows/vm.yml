@@ -2,19 +2,29 @@
 # unattended ISO, install it into QEMU, boot the result, and ask the drive
 # and the agent one thing each. Needs a self-hosted runner with KVM and the
 # tools vm.sh and iso.sh want: qemu-system-x86, ovmf, xorriso, sshpass, curl,
-# node 24 — and a writable install/cache (the Ubuntu ISO is fetched once).
+# node 24, gpgv — and a writable install/cache (the Ubuntu ISO and the drive image are fetched once).
+#
+# The runner runs whatever this workflow's checkout contains: register it as its own unprivileged user, on a machine
+# (or VM) without the release signing key, gh credentials or anything else of the maintainer's; it needs /dev/kvm,
+# not sudo or the docker group.
 name: vm
 on:
   schedule:
     - cron: '17 3 * * *'
   workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   smoke:
+    # a dispatch from another branch (anyone's push) never reaches the self-hosted runner
+    if: github.ref == 'refs/heads/main'
     runs-on: [self-hosted, linux, kvm]
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
-      - run: for t in qemu-system-x86_64 xorriso sshpass curl node fakeroot dpkg-deb; do command -v $t >/dev/null || { echo "missing $t"; exit 1; }; done
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - run: for t in qemu-system-x86_64 xorriso sshpass curl node fakeroot dpkg-deb wget gpgv; do command -v $t >/dev/null || { echo "missing $t"; exit 1; }; done
       - run: npm ci
         working-directory: agent
       - run: make deb
@@ -42,7 +52,7 @@ jobs:
           [ -f install/out/vm/qemu.pid ] && kill "$(cat install/out/vm/qemu.pid)" 2>/dev/null || true
           sleep 2
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: vm-smoke-logs
           path: |

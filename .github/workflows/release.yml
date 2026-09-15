@@ -1,19 +1,22 @@
 # A tag vX.Y.Z → the agent's tests (the file-vdev pool test as root) → the .deb → a GitHub Release with the
-# package, its checksum, and release.json naming the mk-drive version this release pins. install/upgrade.sh
-# on a laptop reads that release and puts it on a box.
+# package, its checksum, and release.json naming the mk-drive version this release pins. That release.json and
+# SHA256SUMS only fill the time until the maintainer signs: install/sign-release.sh builds the package from the tag
+# on their own machine, compares it with this one, and replaces both with its own before signing. A box installs only
+# the signed set. install/upgrade.sh on a laptop reads that release and puts it on a box.
 name: release
 on:
   push:
     tags: ['v*.*.*']
 permissions:
-  contents: write
+  contents: read
 jobs:
-  release:
+  build:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: The tag matches the agent's version
         run: |
           tag=${GITHUB_REF_NAME#v}
@@ -22,7 +25,7 @@ jobs:
           drive=$(tr -d '[:space:]' < install/mk-drive/version)
           contract=$(grep -o 'export const CONTRACT = [0-9]*' agent/src/verbs.ts | grep -o '[0-9]*$')
           { echo "VERSION=$tag"; echo "DRIVE=$drive"; echo "CONTRACT=$contract"; } >> "$GITHUB_ENV"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
       - run: sudo apt-get update && sudo apt-get install -y zfsutils-linux smartmontools fakeroot
@@ -34,15 +37,12 @@ jobs:
         working-directory: agent
       - run: make deb
       - name: Assets and notes
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p out
           cp install/out/mk-nas_${VERSION}_amd64.deb out/
-          # the pinned drive image's checksum, from its own release: the maintainer's signature over SHA256SUMS then covers it too
-          gh release download "v$DRIVE" -R mkornas/mk-drive -D drive -p SHA256SUMS
-          image_sha=$(awk -v f="mk-drive-$DRIVE.tgz" '$2 == f {print $1}' drive/SHA256SUMS)
-          [ -n "$image_sha" ] || { echo "::error::mk-drive v$DRIVE lists no mk-drive-$DRIVE.tgz"; exit 1; }
+          # the pinned drive image's checksum as committed next to the pin (install/release.sh checked the image)
+          image_sha=$(awk -v f="mk-drive-$DRIVE.tgz" '$2 == f {print $1}' install/mk-drive/sha256)
+          [ -n "$image_sha" ] || { echo "::error::install/mk-drive/sha256 names no mk-drive-$DRIVE.tgz"; exit 1; }
           printf '{"agent":"%s","drive":"%s","contract":%s,"driveImageSha256":"%s"}\n' "$VERSION" "$DRIVE" "$CONTRACT" "$image_sha" > out/release.json
           (cd out && sha256sum mk-nas_${VERSION}_amd64.deb release.json > SHA256SUMS)
           prev=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)
@@ -60,7 +60,26 @@ jobs:
             echo "## Changes${prev:+ since $prev}"
             git log --no-merges --format='- %s' ${prev:+$prev..}"$GITHUB_REF_NAME" -- agent shared install .github | head -200
           } > out/notes.md
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release
+          path: out/
+          if-no-files-found: error
+
+  # the only job that may write to the repository, and it runs no code from it
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release
+          path: out
       - name: Publish the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "$GITHUB_REF_NAME" out/mk-nas_*_amd64.deb out/release.json out/SHA256SUMS --title "mk-nas $VERSION" --notes-file out/notes.md --verify-tag
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          gh release create "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" out/mk-nas_*_amd64.deb out/release.json out/SHA256SUMS --title "mk-nas $version" --notes-file out/notes.md --verify-tag

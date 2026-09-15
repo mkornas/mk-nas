@@ -2,7 +2,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Server } from 'node:net';
@@ -40,6 +40,7 @@ import { listen } from '../src/server.ts';
 let dir: string;
 let server: Server;
 let sock: string;
+let db: Db;
 const cli = new URL('../src/cli.ts', import.meta.url).pathname;
 const run: Runner = async (argv) => ({
   argv,
@@ -48,9 +49,9 @@ const run: Runner = async (argv) => ({
   stderr: '',
 });
 
-function mk(args: string[], stdin = ''): Promise<{ code: number | null; out: string; err: string }> {
+function mk(args: string[], stdin = '', env: Record<string, string> = {}): Promise<{ code: number | null; out: string; err: string }> {
   return new Promise((resolve) => {
-    const p = execFile(process.execPath, [cli, ...args], { env: { ...process.env, MK_NAS_SOCKET: sock, NODE_NO_WARNINGS: '1' } }, (e, out, err) =>
+    const p = execFile(process.execPath, [cli, ...args], { env: { ...process.env, MK_NAS_SOCKET: sock, NODE_NO_WARNINGS: '1', ...env } }, (e, out, err) =>
       resolve({ code: e ? ((e as { code?: number }).code ?? 1) : 0, out: String(out), err: String(err) }),
     );
     p.stdin?.end(stdin);
@@ -60,10 +61,11 @@ function mk(args: string[], stdin = ''): Promise<{ code: number | null; out: str
 before(async () => {
   dir = await mkdtemp(join(tmpdir(), 'mk-nas-cli-'));
   sock = join(dir, 'mk-nas.sock');
+  db = new Db(':memory:');
   server = await listen({
     socket: sock,
     audit: async () => {},
-    deps: { run, version: 't', db: new Db(':memory:'), locationsDir: dir, shares: SHARES, replication: REPL, spawn: NOSPAWN, network: NET, backup: BKP },
+    deps: { run, version: 't', db, locationsDir: dir, shares: SHARES, replication: REPL, spawn: NOSPAWN, network: NET, backup: BKP },
   });
 });
 after(async () => {
@@ -135,4 +137,39 @@ test("sizes and flags become the verb's arguments", async () => {
   );
   assert.equal(none.code, 1);
   assert.match(none.err, /the agent is not running/);
+});
+
+test('shares: NFS shows who may mount it, or that nobody may yet', async () => {
+  db.setShare({ dataset: 'tank/docs', smb: false, timeMachine: false, nfs: true, nfsClients: ['192.168.1.0/24', 'laptop'], smbAccess: null });
+  db.setShare({ dataset: 'tank/old', smb: false, timeMachine: false, nfs: true, nfsClients: [], smbAccess: null });
+  try {
+    const t = await mk(['shares']);
+    assert.equal(t.code, 0, t.err);
+    assert.match(t.out, /tank\/docs .*on for 192\.168\.1\.0\/24 laptop/);
+    assert.match(t.out, /tank\/old .*on, no clients yet/);
+    assert.ok(!t.out.includes('private networks'));
+  } finally {
+    db.removeShare('tank/docs');
+    db.removeShare('tank/old');
+  }
+});
+
+test('setup-code: root only, read straight from the stack env, never through the agent', async () => {
+  const env = join(dir, 'drive.env');
+  await writeFile(env, 'TZ=UTC\nDRIVE_SETUP_TOKEN=\nDRIVE_SETUP_TOKEN=K7PQ-2MZX-9RTD\n', { mode: 0o600 });
+  const r = await mk(['setup-code'], '', { MK_NAS_DRIVE_ENV: env, MK_NAS_SOCKET: join(dir, 'absent.sock') });
+  if (process.getuid?.() === 0) {
+    assert.equal(r.code, 0, r.err);
+    assert.equal(r.out, 'K7PQ-2MZX-9RTD\n');
+    await writeFile(env, 'TZ=UTC\n');
+    const none = await mk(['setup-code'], '', { MK_NAS_DRIVE_ENV: env });
+    assert.equal(none.code, 1);
+    assert.match(none.err, /no DRIVE_SETUP_TOKEN/);
+  } else {
+    assert.equal(r.code, 1);
+    assert.equal(r.out, '');
+    assert.match(r.err, /only root can read: sudo mk-nas setup-code/);
+  }
+  const top = await mk(['__complete']);
+  assert.ok(top.out.split('\n').includes('setup-code'));
 });

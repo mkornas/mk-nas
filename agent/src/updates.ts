@@ -5,13 +5,15 @@
  * the agent) that trusts nothing it downloaded until the maintainer's
  * signature over SHA256SUMS checks out against the key the package shipped.
  * SHA256SUMS covers the .deb and release.json; release.json names the pinned
- * drive and its image's checksum, so one signature covers all three.
+ * drive and its image's checksum, so one signature covers all three. The
+ * maintainer writes release.json and SHA256SUMS on their own machine from a
+ * package they built from the tag themselves (install/sign-release.sh).
  * Never a branch, never a release older than what runs.
  */
 import { createHash } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
 import { copyFile, mkdir, readFile, rm, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { Release, Update } from '../../shared/types.ts';
@@ -28,7 +30,7 @@ export interface UpdateConfig {
   dir: string;
   /** ssh-keygen allowed-signers file with the release key, shipped in the package. */
   signers: string;
-  /** Where mk-drive.service loads an image from before compose up, and the script that loads it. */
+  /** Where mk-drive.service loads an image from before compose up, and the script that loads it (it writes the loaded image's ID to mk-drive-image.id next to the tgz). */
   driveImageFile: string;
   loadImage: string;
   /** The drive version the installed package pins. */
@@ -205,6 +207,18 @@ export async function download(fetchFn: Fetch, url: string, file: string, agent:
   return hash.digest('hex');
 }
 
+/**
+ * The drive image is on the box and is the one load-image.sh loaded from a tgz it checked against the pinned
+ * checksum: the ID docker gives it now is the ID written then. An image with the tag from anywhere else (pulled, loaded
+ * by hand, or loaded before 0.8.1 wrote IDs) does not count, and the verified tgz is downloaded again.
+ */
+export async function verifiedImageOnBox(run: Runner, cfg: UpdateConfig, image: string): Promise<boolean> {
+  const r = await run(['docker', 'image', 'inspect', '-f', '{{.Id}}', image]);
+  if (r.exitCode !== 0) return false;
+  const loaded = await readFile(join(dirname(cfg.driveImageFile), 'mk-drive-image.id'), 'utf8').catch(() => '');
+  return loaded.trim() === `${image} ${r.stdout.trim()}`;
+}
+
 /** One install, step by step, each written to the run's row. Resolves with the finished run's message; throws with the reason. The downloads go either way. */
 export async function installRelease(ctx: InstallContext, version: string, runId: number): Promise<string> {
   const dir = join(ctx.cfg.dir, version);
@@ -242,7 +256,7 @@ async function installSteps(ctx: InstallContext, version: string, runId: number,
   if (!meta.driveImageSha256) throw new Error(`release ${version} names no drive image checksum`);
 
   const image = `${cfg.driveImage}:${meta.drive}`;
-  if ((await run(['docker', 'image', 'inspect', image])).exitCode !== 0) {
+  if (!(await verifiedImageOnBox(run, cfg, image))) {
     step(`downloading mk-drive ${meta.drive}`);
     const tgz = join(dir, `mk-drive-${meta.drive}.tgz`);
     const sha = await download(ctx.fetch, `https://github.com/${cfg.driveRepo}/releases/download/v${meta.drive}/mk-drive-${meta.drive}.tgz`, tgz, ctx.agent);

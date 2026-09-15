@@ -144,7 +144,10 @@ export interface Share {
   /** SMB only: Time Machine backups may target this share. */
   timeMachine: boolean;
   nfs: boolean;
-  /** NFS only: who may mount it (hosts, CIDRs, or *). */
+  /**
+   * NFS only: who may mount it (hosts, CIDRs, or * when typed). share.set refuses NFS without one; an empty list, on a
+   * share stored before that, means nobody may mount it.
+   */
   nfsClients: string[];
   /**
    * SMB only: who may open it, by SMB user name. null for a share from before 0.8.0, which every SMB user may open until

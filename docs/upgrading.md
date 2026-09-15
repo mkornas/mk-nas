@@ -28,14 +28,18 @@ The postinst restarts `mk-nasd`, keeps the timers' schedule, leaves
 shares, the database under `/var/lib/mk-nas` or the ssh key. It replaces
 `/opt/mk-drive/docker-compose.yml`, which names the pinned drive image,
 and restarts the drive when that changed; the image must then be on the
-box (`sudo docker load -i mk-drive-<version>.tgz`) or pullable
-(`sudo docker login ghcr.io` once, with a read-only token). A copy that was
+box or waiting at `/opt/mk-nas/mk-drive-image.tgz` (`mk-drive-<version>.tgz`
+from mk-drive's release, loaded only when it matches the checksum the
+package carries). The box never pulls the drive from a registry. A copy that was
 mid-send when the agent restarted is marked interrupted and resumes on its
 next run.
 
 **Running another drive on purpose** (a test build): set
 `DRIVE_IMAGE=ghcr.io/mkornas/mk-drive:<tag>` or a local image in
-`/opt/mk-drive/.env` and `sudo systemctl restart mk-drive`. The pin applies
+`/opt/mk-drive/.env` and `sudo systemctl restart mk-drive`. A local image
+must be loaded first; for one compose should pull from a registry, add
+`DRIVE_PULL_POLICY=missing` (and `sudo docker login ghcr.io` for a private
+package). The pin applies
 again once that line is removed. Boxes installed before 0.4.1 had
 `DRIVE_IMAGE=…:latest` there; 0.4.1's postinst comments that exact line out,
 since `:latest` follows every push to mk-drive's main.
@@ -46,6 +50,44 @@ Every agent reports the verb contract it speaks; the drive knows the one it
 was built for. A drive newer than its agent shows a banner on every page
 asking for the upgrade above, and the Storage pages may misbehave until
 then. An agent newer than its drive is fine: verbs are only ever added.
+
+## What 0.8.1 changes on a box
+
+- **The drive's image is never pulled.** The stack file sets
+  `pull_policy: never` for mk-drive: the image comes only from
+  `mk-drive-<version>.tgz`, which the drive's start loads only when its
+  sha256 is the one the package carries (`/opt/mk-nas/install/mk-drive/sha256`).
+  When the image is missing, `mk-drive.service` fails with a message saying
+  to install the release again (`install/upgrade.sh`) instead of pulling it
+  from ghcr.io. Your own `DRIVE_IMAGE` from a registry needs
+  `DRIVE_PULL_POLICY=missing` next to it in `/opt/mk-drive/.env`.
+- The image ID a verified load gives is written to
+  `/opt/mk-nas/mk-drive-image.id`. An update skips downloading the drive
+  image only when the image on the box has that ID, so the first update
+  after this one downloads the image once more even when the pin is the
+  same.
+- **Both containers are hardened**: no capabilities (`cap_drop: ALL`) and
+  `no-new-privileges`. The drive runs as its unprivileged uid as before and
+  needs none; cloudflared is pinned by digest. Compose recreates both
+  containers once.
+- The drive gets `DRIVE_SETUP_TOKEN` from `/opt/mk-drive/.env`: the setup
+  code the first visit asks for before it creates the admin account, on a
+  drive that knows it (`docs/first-install.md`).
+- **An NFS share names who may mount it.** Before, a share with NFS on and
+  no hosts listed was exported to every private network (10/8, 172.16/12,
+  192.168/16). Now it is exported to nobody until hosts or networks are
+  added on its Shares page, and the drive asks for at least one when NFS is
+  turned on. The agent rewrites smb.conf and the exports once when it starts
+  on the new version, so this applies right after the upgrade.
+- The package no longer adds the first user (uid 1000) to the `docker`
+  group; a box that already has it keeps it (`sudo gpasswd -d <user> docker`
+  removes it: membership is root on the box).
+- `install/upgrade.sh` no longer reads `UNSIGNED=1`; `--unsigned` asks you to
+  type `unsigned`. It refuses a release whose `release.json` names no drive
+  image checksum.
+- A release's `release.json` and `SHA256SUMS` are now written by the
+  maintainer's machine from a package it built and compared with CI's
+  (`docs/releasing.md`); nothing changes in how a box checks them.
 
 ## What 0.8.0 changes on a box
 

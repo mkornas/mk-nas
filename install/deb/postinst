@@ -18,10 +18,6 @@ case "$1" in
       systemctl disable --now smbd nmbd nfs-server >/dev/null 2>&1 || true
     fi
 
-    # the first person on the box (uid 1000, made by the installer) may talk to docker without sudo
-    first_user=$(getent passwd 1000 | cut -d: -f1 || true)
-    [ -n "$first_user" ] && usermod -aG docker "$first_user" || true
-
     # the mk-drive stack: the compose file is ours to replace (it pins the drive version this release was made with),
     # the .env is the operator's
     stack_changed=0
@@ -50,6 +46,30 @@ ENV
     fi
     # it holds secrets (a tunnel token, single sign-on's client secret): root only
     chmod 0600 /opt/mk-drive/.env
+
+    # the drive's setup code: port 8810 is open on the LAN before the admin account exists, and the drive asks for this
+    # code to create it. Made once, when the .env has none (an empty line gives way to it); never replaced or printed
+    # afterwards. It needs no removal: once an account exists the drive ignores it. `sudo mk-nas setup-code` shows it.
+    if ! grep -Eq '^[[:space:]]*DRIVE_SETUP_TOKEN[[:space:]]*=[[:space:]]*[^[:space:]]' /opt/mk-drive/.env; then
+      # 12 characters with nothing to mistake (no 0/O, 1/I/L), in threes of four: K7PQ-2MZX-9RTD
+      code=$(tr -dc 'ABCDEFGHJKMNPQRSTUVWXYZ23456789' </dev/urandom | head -c 12 | sed 's/^\(....\)\(....\)\(....\)$/\1-\2-\3/')
+      [ ${#code} -eq 14 ] || { echo "mk-nas: could not make the drive's setup code" >&2; exit 1; }
+      sed -i '/^[[:space:]]*DRIVE_SETUP_TOKEN[[:space:]]*=[[:space:]]*$/d' /opt/mk-drive/.env
+      printf '%s\n' \
+        "# the code the drive asks for on its first visit, to create the admin account; unused once an account exists" \
+        "DRIVE_SETUP_TOKEN=$code" >>/opt/mk-drive/.env
+      stack_changed=1
+      # a first install shows it on the box's own screen, above the login prompt (\4 is the box's address); an upgrade
+      # of a box already in use does not
+      if [ -z "$2" ]; then
+        mkdir -p /etc/issue.d
+        # agetty reads it as root; nobody else needs to
+        (umask 077 && printf '%s\n' \
+          "mk-nas: create the drive's admin account at http://\\4:8810 with the setup code $code" \
+          "(asked on that first visit only; sudo mk-nas setup-code shows it again)" \
+          "" >/etc/issue.d/mk-nas.issue)
+      fi
+    fi
 
     # a box set up by the pre-package install.sh has copies of the units in /etc; the package's own are in /lib
     for u in mk-nasd.service mk-nas-snapshot.service mk-nas-snapshot.timer mk-nas-replication.service mk-nas-replication.timer mk-drive.service; do

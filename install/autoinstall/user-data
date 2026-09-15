@@ -4,7 +4,9 @@
 # disk is the OS disk (the storage screen: pick it, "use an entire disk").
 # The data disks are never touched; you make the pool from the drive.
 # Everything else is decided here. The mk-drive admin account is created
-# on the first visit of http://<nas>:8810.
+# on the first visit of http://<nas>:8810, with the setup code the box's
+# screen shows above its login prompt (the package makes it and writes
+# /etc/issue.d/mk-nas.issue; `sudo mk-nas setup-code` shows it too).
 autoinstall:
   version: 1
   interactive-sections:
@@ -23,6 +25,10 @@ autoinstall:
         match:
           name: "en*"
         dhcp4: true
+  # password ssh stays on for the first login (the identity screen asks for a password, and a key may not be ready);
+  # root never logs in over ssh (late-commands). Keys only afterwards: docs/first-install.md. To bring keys along
+  # instead, list them under authorized-keys here, or add ssh to interactive-sections for the installer's own
+  # screen (import from GitHub or Launchpad).
   ssh:
     install-server: true
     allow-pw: true
@@ -40,6 +46,8 @@ autoinstall:
   updates: security
   timezone: geoip
   late-commands:
+    - mkdir -p /target/etc/ssh/sshd_config.d
+    - sh -c 'printf "%s\n" "# written by the mk-nas installer - no root login over ssh; log in as yourself and use sudo" "PermitRootLogin no" > /target/etc/ssh/sshd_config.d/10-mk-nas.conf'
     - mkdir -p /target/opt/mk-nas-src
     - cp -a /cdrom/mk-nas/. /target/opt/mk-nas-src/
     - sh -c 'mv /target/opt/mk-nas-src/install/out/mk-nas_*_amd64.deb /target/opt/mk-nas-src/install/out/mk-nas.deb'

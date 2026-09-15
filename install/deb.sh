@@ -39,6 +39,10 @@ drive_version=$(tr -d '[:space:]' < "$here/mk-drive/version")
 [[ $drive_version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "deb.sh: install/mk-drive/version must be X.Y.Z (found '$drive_version')" >&2; exit 1; }
 sed "s/@DRIVE_VERSION@/$drive_version/" "$here/mk-drive/docker-compose.yml" > "$stage/opt/mk-nas/install/mk-drive/docker-compose.yml"
 echo "$drive_version" > "$stage/opt/mk-nas/install/mk-drive/version"
+# the image's checksum, verified by release.sh when the pin was set: load-image.sh on the box loads only a tgz that matches it
+grep -qE "^[0-9a-f]{64}  mk-drive-$drive_version\.tgz\$" "$here/mk-drive/sha256" 2>/dev/null ||
+  { echo "deb.sh: install/mk-drive/sha256 does not name mk-drive-$drive_version.tgz; install/release.sh --drive $drive_version writes it" >&2; exit 1; }
+cp "$here/mk-drive/sha256" "$stage/opt/mk-nas/install/mk-drive/sha256"
 cp "$repo/agent/mk-nasd.service" "$repo/agent/mk-nas-snapshot.service" "$repo/agent/mk-nas-snapshot.timer" "$repo/agent/mk-nas-replication.service" "$repo/agent/mk-nas-replication.timer" "$here/mk-drive.service" "$stage/lib/systemd/system/"
 ln -s /opt/mk-nas/agent/src/cli.ts "$stage/usr/bin/mk-nas"
 cp "$here/deb/mk-nas.logrotate" "$stage/etc/logrotate.d/mk-nas"
@@ -63,7 +67,11 @@ Description: the mk-nas agent: ZFS, shares and copies for mk-drive
  zfs, smartctl, Samba, NFS and ssh, its timers, the mk-nas command, and the
  mk-drive stack that shows it all. Node is included.
 CTL
+# a checkout made with umask 002 has group-writable files: nothing in the package is writable by anyone but root
+chmod -R go-w "$stage"
 say "writing $out (mk-drive $drive_version pinned)"
 rm -f "$out"
-fakeroot dpkg-deb --build --root-owner-group -Zxz "$stage" "$out" >/dev/null
+# tar mtimes clamped to the commit's time, so the same tag builds the same package here and in CI (sign-release.sh compares)
+SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-$(git -C "$repo" log -1 --format=%ct 2>/dev/null || date +%s)} \
+  fakeroot dpkg-deb --build --root-owner-group -Zxz "$stage" "$out" >/dev/null
 ls -l "$out"

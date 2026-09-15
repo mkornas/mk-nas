@@ -30,12 +30,14 @@
  *   mk-nas replication key | test <user@host[:port]> <target-dataset> | list | jobs
  *   mk-nas replication add <dataset> <user@host[:port]> <target-dataset> [--schedule manual|hourly|daily|weekly] [--keep 3] [--recursive]
  *   mk-nas replication run <id> | remove <id>
+ *   mk-nas setup-code                        the drive's setup code, asked on its first visit (root; read from /opt/mk-drive/.env)
  *   mk-nas call <verb> [json-args]           any verb, raw
  *   mk-nas __complete <words…>               what may come next (for the bash and zsh completion in the package)
  *
  * --json prints the result as JSON. --confirm <name> types the name for you (scripts).
  * Needs root or the mk-nas group. MK_NAS_SOCKET overrides /run/mk-nas.sock.
  */
+import { readFileSync } from 'node:fs';
 import { connect } from 'node:net';
 import { createInterface } from 'node:readline/promises';
 import type { Response, Verb } from '../../shared/types.ts';
@@ -89,6 +91,43 @@ function call(verb: string, args?: Record<string, unknown>): Promise<unknown> {
       ),
     );
   });
+}
+
+/**
+ * The drive's setup code: DRIVE_SETUP_TOKEN in the stack's .env, which the package writes on install. Not a verb — the
+ * file is root's, and the agent has no business handing it out over the socket — so it is read here, as root only.
+ */
+function setupCode(): never {
+  const file = process.env.MK_NAS_DRIVE_ENV || '/opt/mk-drive/.env';
+  if (process.getuid?.() !== 0) {
+    console.error(`mk-nas: the setup code is in ${file}, which only root can read: sudo mk-nas setup-code`);
+    process.exit(1);
+  }
+  let text: string;
+  try {
+    text = readFileSync(file, 'utf8');
+  } catch (e) {
+    console.error(`mk-nas: cannot read ${file}: ${(e as Error).message}`);
+    process.exit(1);
+  }
+  const line = text
+    .split(/\r?\n/)
+    .filter((l) => /^\s*DRIVE_SETUP_TOKEN\s*=/.test(l))
+    .at(-1);
+  const code = line
+    ?.slice(line.indexOf('=') + 1)
+    .trim()
+    .replace(/^(["'])(.*)\1$/, '$2');
+  if (!code) {
+    console.error(`mk-nas: no DRIVE_SETUP_TOKEN in ${file}; sudo dpkg-reconfigure mk-nas writes one (the drive picks it up as it restarts)`);
+    process.exit(1);
+  }
+  if (json) console.log(JSON.stringify({ setupCode: code }));
+  else {
+    console.log(code);
+    console.error('The drive asks for it on its first visit, to create the admin account. Once an account exists it is not used.');
+  }
+  process.exit(0);
 }
 
 const UNITS: Record<string, number> = { k: 1024, m: 1024 ** 2, g: 1024 ** 3, t: 1024 ** 4 };
@@ -218,7 +257,7 @@ function print(verb: string, result: unknown): void {
           r.available
             ? `mk-nas ${r.latest.version} is out (mk-drive ${r.latest.drive}): mk-nas update install ${r.latest.version} — ${r.latest.url}`
             : newer(r.latest.version, r.current) && !r.latest.signed
-              ? `mk-nas ${r.latest.version} is out but not signed, so the box does not install it (install/upgrade.sh with UNSIGNED=1 can) — ${r.latest.url}`
+              ? `mk-nas ${r.latest.version} is out but not signed, so the box does not install it (install/upgrade.sh --unsigned can) — ${r.latest.url}`
               : `up to date; the newest release is ${r.latest.version}`,
         );
       console.log(r.checkedAt ? `checked ${r.checkedAt.replace('T', ' ').slice(0, 16)}${r.error ? ` — failed: ${r.error}` : ''}` : 'never checked');
@@ -416,7 +455,7 @@ function print(verb: string, result: unknown): void {
                 : s.smbAccess.length
                   ? s.smbAccess.map((a: any) => `${a.user}${a.level === 'read' ? ' (read)' : ''}`).join(' ')
                   : 'nobody',
-            nfs: s.nfs ? `on (${s.nfsClients.length ? s.nfsClients.join(' ') : 'private networks'})` : 'off',
+            nfs: s.nfs ? (s.nfsClients.length ? `on for ${s.nfsClients.join(' ')}` : 'on, no clients yet') : 'off',
             path: s.mountpoint ?? 'not mounted',
           })),
           ['dataset', 'share', 'smb', 'who', 'nfs', 'path'],
@@ -424,7 +463,7 @@ function print(verb: string, result: unknown): void {
       );
     case 'share.set':
       return void console.log(
-        `${r.dataset}: smb ${r.smb ? 'on' : 'off'}${r.timeMachine ? ' (time machine)' : ''}, nfs ${r.nfs ? 'on' : 'off'}${r.nfs ? ` for ${r.nfsClients.length ? r.nfsClients.join(' ') : 'private networks'}` : ''}`,
+        `${r.dataset}: smb ${r.smb ? 'on' : 'off'}${r.timeMachine ? ' (time machine)' : ''}, nfs ${r.nfs ? (r.nfsClients.length ? `on for ${r.nfsClients.join(' ')}` : 'on, no clients yet') : 'off'}`,
       );
     case 'share.remove':
       return void console.log(`${r.removed} is no longer shared`);
@@ -512,6 +551,7 @@ const COMMANDS = [
   'replication',
   'network',
   'update',
+  'setup-code',
   'call',
 ];
 
@@ -602,6 +642,7 @@ async function complete(words: string[]): Promise<string[]> {
 async function main(): Promise<void> {
   const [cmd, ...rest] = argv;
   if (!cmd || cmd === '--help' || cmd === '-h') usage();
+  if (cmd === 'setup-code') setupCode();
   if (cmd === '__complete') {
     const out = await complete(rest);
     if (out.length) console.log(out.join('\n'));

@@ -6,8 +6,14 @@ services:
     # the drive version this mk-nas release was made with (install/mk-drive/version, stamped by deb.sh);
     # DRIVE_IMAGE in .env overrides it — leave it unset unless you mean to run something else
     image: ${DRIVE_IMAGE:-ghcr.io/mkornas/mk-drive:@DRIVE_VERSION@}
+    # never pulled by tag: the pinned image comes only from a checksum-verified mk-drive-X.Y.Z.tgz (load-image.sh). Running
+    # your own DRIVE_IMAGE from a registry, set DRIVE_PULL_POLICY=missing next to it
+    pull_policy: ${DRIVE_PULL_POLICY:-never}
     container_name: mk-drive
     restart: unless-stopped
+    # it runs as an unprivileged uid and needs no capabilities; nothing inside may gain any (setuid binaries included)
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     # who the drive runs as; the agent hands new locations to the same uid/gid (set both in .env)
     user: "${DRIVE_UID:-1000}:${DRIVE_GID:-1000}"
     ports:
@@ -29,6 +35,8 @@ services:
       # a monitor (mk-dashboard, a script) reads the pools' and disks' health at GET /api/nas/monitor with this token
       # as a bearer (32+ characters, e.g. `openssl rand -hex 32`); unset, the route does not exist
       DRIVE_NAS_MONITOR_TOKEN: ${DRIVE_NAS_MONITOR_TOKEN:-}
+      # the one-time code the first visit asks for before it creates the admin (written into .env by the package)
+      DRIVE_SETUP_TOKEN: ${DRIVE_SETUP_TOKEN:-}
     volumes:
       # rslave: a dataset the agent mounts under /srv/locations later shows up inside the container too
       - type: bind
@@ -47,10 +55,14 @@ services:
   # set in .env (stack-up.sh turns the profile on); in Cloudflare's dashboard the tunnel's public hostname points at
   # http://localhost:8810. SMB, NFS and ssh never go through it.
   cloudflared:
-    image: cloudflare/cloudflared:2026.9.1
+    # 2026.9.1, by the digest of its multi-arch index (docker buildx imagetools inspect cloudflare/cloudflared:2026.9.1)
+    image: cloudflare/cloudflared:2026.9.1@sha256:b269e8abd07a5bf6f3f4be65d5050b2174eca89c56a0241a8ff32a16aec454e4
     container_name: mk-drive-tunnel
     profiles: [tunnel]
     restart: unless-stopped
+    # it runs as uid 65532 and only dials out: no capabilities, none to gain
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     network_mode: host
     command: tunnel run
     environment:

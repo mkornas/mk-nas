@@ -4,6 +4,7 @@
 #   install/upgrade.sh nasadmin@nas.local            the newest release
 #   install/upgrade.sh nasadmin@nas.local 0.4.0      that one (an older one rolls back)
 #   install/upgrade.sh -p 2222 nasadmin@localhost    the test VM (docs/vm.md)
+#   install/upgrade.sh --unsigned nasadmin@nas.local 0.4.0   a release not signed yet; asks you to type "unsigned"
 #
 # Downloads the release's .deb and the mk-drive image it pins (both from GitHub Releases, checksums verified; gh
 # must be signed in here — the box needs no GitHub or registry login), copies them over ssh,
@@ -11,9 +12,13 @@
 # pinned image), and waits for the agent and the drive to answer. sudo asks for the box's password once.
 set -euo pipefail
 port=22
+unsigned=
+args=()
+for a in "$@"; do if [[ $a == --unsigned ]]; then unsigned=1; else args+=("$a"); fi; done
+set -- "${args[@]}"
 while getopts "p:" o; do case $o in p) port=$OPTARG ;; *) exit 2 ;; esac; done
 shift $((OPTIND - 1))
-host=${1:?usage: install/upgrade.sh [-p port] user@host [X.Y.Z]}
+host=${1:?usage: install/upgrade.sh [--unsigned] [-p port] user@host [X.Y.Z]}
 want=${2:-}
 say() { printf '\033[1m==> %s\033[0m\n' "$*"; }
 die() { echo "upgrade.sh: $*" >&2; exit 1; }
@@ -37,14 +42,20 @@ if gh release view "$tag" -R mkornas/mk-nas --json assets -q '.assets[].name' | 
     die "the signature of mk-nas $v does not verify"
   say "signature verified"
 else
-  [[ ${UNSIGNED:-} == 1 ]] || die "mk-nas $v is not signed (yet: install/sign-release.sh $v); UNSIGNED=1 installs it anyway"
+  [[ -n $unsigned ]] || die "mk-nas $v is not signed"
+  printf 'mk-nas %s is not signed: nothing but GitHub vouches for this package. Type "unsigned" to install it anyway: ' "$v"
+  read -r answer || answer=
+  [[ $answer == unsigned ]] || die "not installed"
 fi
 (cd "$tmp/nas" && sha256sum -c --quiet SHA256SUMS) || die "checksum mismatch in the mk-nas $v release"
 drive=$(grep -o '"drive": *"[^"]*"' "$tmp/nas/release.json" | grep -o '[0-9][0-9.]*')
 [[ -n $drive ]] || die "release.json names no drive version"
+image_sha=$(grep -o '"driveImageSha256": *"[0-9a-f]*"' "$tmp/nas/release.json" | grep -o '[0-9a-f]\{64\}' || true)
+[[ -n $image_sha ]] || die "release.json of mk-nas $v names no drive image checksum"
 
 have_nas=$(ssh "${ssh_opts[@]}" "$host" "dpkg-query -W -f='\${Version}' mk-nas 2>/dev/null || true")
-have_drive=$(ssh "${ssh_opts[@]}" "$host" "docker image inspect ghcr.io/mkornas/mk-drive:$drive >/dev/null 2>&1 && echo yes || echo no")
+# on the box already counts only when it is the image load-image.sh loaded from a checked tgz (its ID written then)
+have_drive=$(ssh "${ssh_opts[@]}" "$host" "id=\$(docker image inspect -f '{{.Id}}' ghcr.io/mkornas/mk-drive:$drive 2>/dev/null) && grep -qxF \"ghcr.io/mkornas/mk-drive:$drive \$id\" /opt/mk-nas/mk-drive-image.id 2>/dev/null && echo yes || echo no")
 say "the box has mk-nas ${have_nas:-none}; this release pins mk-drive $drive (on the box already: $have_drive)"
 
 files=("$tmp/nas/mk-nas_${v}_amd64.deb")
@@ -52,8 +63,7 @@ if [[ $have_drive != yes ]]; then
   say "mk-drive $drive"
   gh release download "v$drive" -R mkornas/mk-drive -D "$tmp/drive" -p "mk-drive-$drive.tgz" -p SHA256SUMS
   (cd "$tmp/drive" && sha256sum -c --quiet SHA256SUMS) || die "checksum mismatch in the mk-drive $drive release"
-  image_sha=$(grep -o '"driveImageSha256": *"[0-9a-f]*"' "$tmp/nas/release.json" | grep -o '[0-9a-f]\{64\}' || true)
-  [[ -z $image_sha || $image_sha == $(sha256sum "$tmp/drive/mk-drive-$drive.tgz" | cut -d' ' -f1) ]] || die "mk-drive-$drive.tgz does not match the signed mk-nas $v release"
+  [[ $image_sha == $(sha256sum "$tmp/drive/mk-drive-$drive.tgz" | cut -d' ' -f1) ]] || die "mk-drive-$drive.tgz does not match the signed mk-nas $v release"
   files+=("$tmp/drive/mk-drive-$drive.tgz")
 fi
 

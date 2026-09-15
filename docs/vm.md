@@ -31,7 +31,9 @@ stick.
 | QEMU monitor (headless) | `nc 127.0.0.1 4444` (`screendump /tmp/x.ppm` shows the screen) |
 | the host, from inside the VM | `10.0.2.2` (QEMU user networking) |
 
-The drive's admin inside the VM is whoever was created on the first visit.
+The drive's admin inside the VM is whoever was created on the first visit,
+which asks for the setup code: `ssh -p 2222 nasadmin@localhost sudo mk-nas setup-code`
+(or the serial console's login prompt).
 When nobody remembers the password:
 `sudo docker exec -i mk-drive sh -c "echo <new> | node src/cli.ts password <email>"`.
 

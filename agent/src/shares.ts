@@ -5,7 +5,7 @@
  * daemons run is always exactly what the database says. Generation is pure
  * (tests feed it rows); `apply` writes and reloads.
  */
-import { writeFile, rename, stat } from 'node:fs/promises';
+import { readFile, rename, stat, writeFile } from 'node:fs/promises';
 import type { Share, ShareSetArgs, SmbAccess, SmbUser } from '../../shared/types.ts';
 import type { Db, StoredShare } from './db.ts';
 import { BadArgs, datasetName } from './names.ts';
@@ -49,8 +49,6 @@ export function smbAccessOf(v: unknown): SmbAccess[] {
     return { user: name, level };
   });
 }
-
-export const DEFAULT_NFS_CLIENTS = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'];
 
 export function smbConf(shares: Share[], cfg: ShareConfig, ownerName: string, ownerGroup: string): string {
   const out: string[] = [
@@ -117,8 +115,15 @@ export function exportsFile(shares: Share[], cfg: ShareConfig): string {
   const out: string[] = ['# Written by mk-nasd from its database. Edits here are lost on the next change; use the drive.'];
   for (const s of shares) {
     if (!s.nfs || !s.mountpoint) continue;
-    const clients = s.nfsClients.length ? s.nfsClients : DEFAULT_NFS_CLIENTS;
-    out.push(`${s.mountpoint} ${clients.map((c) => `${c}(rw,sync,no_subtree_check,all_squash,anonuid=${cfg.ownerUid},anongid=${cfg.ownerGid})`).join(' ')}`);
+    // no fallback to "the private networks": a share names who may mount it. One stored before share.set asked for a list
+    // is exported to nobody until someone adds hosts to it
+    if (s.nfsClients.length === 0) {
+      out.push(`# ${s.mountpoint}: NFS is on but no hosts or networks are allowed yet, so it is not exported`);
+      continue;
+    }
+    out.push(
+      `${s.mountpoint} ${s.nfsClients.map((c) => `${c}(rw,sync,no_subtree_check,all_squash,anonuid=${cfg.ownerUid},anongid=${cfg.ownerGid})`).join(' ')}`,
+    );
   }
   return out.join('\n') + '\n';
 }
@@ -165,7 +170,7 @@ export async function apply(run: Runner, db: Db, cfg: ShareConfig): Promise<Shar
   await writeAtomically(cfg.smbConf, smbConf(shares, cfg, owner.user, owner.group));
   await writeAtomically(cfg.exportsFile, exportsFile(shares, cfg));
   const anySmb = shares.some((s) => s.smb && s.mountpoint);
-  const anyNfs = shares.some((s) => s.nfs && s.mountpoint);
+  const anyNfs = shares.some((s) => s.nfs && s.mountpoint && s.nfsClients.length);
   if (anySmb) {
     await must(run, ['systemctl', 'enable', '--now', 'smbd']);
     await must(run, ['smbcontrol', 'all', 'reload-config']);
@@ -180,6 +185,22 @@ export async function apply(run: Runner, db: Db, cfg: ShareConfig): Promise<Shar
     await run(['systemctl', 'disable', '--now', 'nfs-server']);
   }
   return shares;
+}
+
+/**
+ * On the agent's start: both files as this version writes them, so a rule that changed in an upgrade (NFS with no hosts
+ * exported to nobody) takes effect without waiting for someone to change a share. Nothing happens when the files are
+ * already right, or while a shared dataset is not mounted (it would drop out of the files until the next change).
+ */
+export async function reapply(run: Runner, db: Db, cfg: ShareConfig): Promise<boolean> {
+  const shares = await listShares(run, db);
+  if (shares.length === 0 || shares.some((s) => !s.mountpoint)) return false;
+  const owner = await ownerNamesOf(run, cfg.ownerUid, cfg.ownerGid);
+  const current = async (file: string) => readFile(file, 'utf8').catch(() => null);
+  if ((await current(cfg.smbConf)) === smbConf(shares, cfg, owner.user, owner.group) && (await current(cfg.exportsFile)) === exportsFile(shares, cfg))
+    return false;
+  await apply(run, db, cfg);
+  return true;
 }
 
 export async function setShare(run: Runner, db: Db, cfg: ShareConfig, a: ShareSetArgs): Promise<Share> {
@@ -201,6 +222,10 @@ export async function setShare(run: Runner, db: Db, cfg: ShareConfig, a: ShareSe
     if (!Array.isArray(a.nfsClients)) throw new BadArgs('nfsClients must be a list');
     nfsClients = a.nfsClients.map(nfsClient);
   }
+  // NFS has no accounts: the list is the whole access control, so it is never empty. A call that leaves NFS alone (only
+  // SMB changes) does not trip over a share stored with an empty list before this rule; it stays exported to nobody
+  if (nfs && nfsClients.length === 0 && (a.nfs !== undefined || a.nfsClients !== undefined))
+    throw new BadArgs('name the hosts or networks allowed to mount it');
   const smbAccess = a.smbAccess === undefined ? (before?.smbAccess ?? null) : smbAccessOf(a.smbAccess);
   if (!smb && !nfs) {
     db.removeShare(dataset);

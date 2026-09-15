@@ -13,18 +13,21 @@ release it knew and says why. A release is *available* when it is newer
 than what runs and signed.
 
 **The signature.** Releases are signed on the machine that cuts them, not
-in CI: `make release` waits for the release workflow and runs
-`install/sign-release.sh`, which signs `SHA256SUMS` with an ed25519 ssh key
-(`ssh-keygen -Y sign`, namespace `mk-nas-release`) and uploads
-`SHA256SUMS.sig`. Whoever controls the GitHub account can publish a
-release, but cannot make a box install it. The public key is
-`install/release-signers`, shipped in every package as
-`/opt/mk-nas/install/release-signers`; `ssh-keygen` is on every Ubuntu, so
-the box needs nothing new. `SHA256SUMS` lists the package and
-`release.json`; the workflow writes the pinned drive image's checksum into
-`release.json` (`driveImageSha256`, from mk-drive's own release), so the
-one signature covers all three. Releases before 0.6.0 have no such
-checksum and are never installed from the box.
+in CI, and over nothing CI said: `make release` waits for the release
+workflow and runs `install/sign-release.sh`, which builds the package from
+the tag itself, requires the workflow's package to be that same package,
+writes `release.json` and `SHA256SUMS` itself, signs `SHA256SUMS` with an
+ed25519 ssh key (`ssh-keygen -Y sign`, namespace `mk-nas-release`) and
+uploads all three over the workflow's (`docs/releasing.md`, "Signing").
+Whoever controls the GitHub account can publish a release, but cannot make
+a box install it. The public key is `install/release-signers`, shipped in
+every package as `/opt/mk-nas/install/release-signers`; `ssh-keygen` is on
+every Ubuntu, so the box needs nothing new. `SHA256SUMS` lists the package
+and `release.json`; `release.json` names the pinned drive image's checksum
+(`driveImageSha256`), which is `install/mk-drive/sha256` at the tag —
+committed when the drive was pinned, after the maintainer's machine checked
+the image — so the one signature covers all three. Releases before 0.6.0
+have no such checksum and are never installed from the box.
 
 **The install.** `update.install` takes the version the person saw, and
 refuses anything but the newest checked release, newer than this one,
@@ -36,14 +39,21 @@ each step to `update_runs`:
    into `/var/lib/mk-nas/updates/<version>`, only from the repository's own
    release download URLs;
 2. verify the signature, then the package's and `release.json`'s checksums;
-3. when the pinned drive image is not on the box, download
+3. unless the pinned drive image is on the box *and* is the one
+   `load-image.sh` loaded from a checked file (its image ID, written to
+   `/opt/mk-nas/mk-drive-image.id` then, is the ID it has now), download
    `mk-drive-<drive>.tgz` from mk-drive's release, check it against
    `driveImageSha256`, and put it where `mk-drive.service` loads it from;
 4. take the settings backup when one is set up (a failed backup stops the
    install);
 5. `apt-get install` the package — the same postinst as by hand — and load
-   a waiting image;
+   a waiting image (`load-image.sh` checks it once more, against the
+   checksum the new package carries);
 6. wait until the installed agent is the new version and running.
+
+The drive's image is never pulled from a registry (`pull_policy: never` in
+the stack file): when it is missing, `mk-drive.service` fails and says to
+bring it with the release instead.
 
 A run whose process is gone (the box went down mid-install) is marked
 failed the next time anyone looks. The drive restarts during the install

@@ -13,12 +13,16 @@ Releases and updating a box (`release.sh`, `upgrade.sh`, the pinned drive versio
   boots into autoinstall with this repo on it. Two questions on the box: who
   you are (the identity screen: name, hostname, password) and which disk is
   the OS disk (the storage screen). The data disks are never touched. The
-  mk-drive admin is created on the first visit of `http://<nas>:8810`.
-- The stick carries the mk-drive image when docker is on the build machine
-  (`docker save` of `ghcr.io/mkornas/mk-drive:latest`, or `DRIVE_IMAGE=…`), so
-  the ghcr package can stay private and the first boot needs no registry.
-  Updating later on the NAS: `docker login ghcr.io` once with a read-only
-  token, then `cd /opt/mk-drive && docker compose pull && systemctl restart mk-drive`.
+  mk-drive admin is created on the first visit of `http://<nas>:8810`, with
+  the setup code the package makes (`DRIVE_SETUP_TOKEN` in
+  `/opt/mk-drive/.env`; on the box's screen above the login prompt, and
+  `sudo mk-nas setup-code`).
+- The stick carries the mk-drive image of the pinned version: the release's
+  `mk-drive-X.Y.Z.tgz`, checked against `install/mk-drive/sha256` before it
+  goes on the stick, so the first boot needs no registry. The box never pulls
+  the drive by tag (`pull_policy: never`); `load-image.sh` loads only an image
+  file whose sha256 matches the pin. Updating later: System → Updates on the
+  drive, or `make upgrade HOST=…` (`docs/releasing.md`).
 - `make vm` (`vm.sh`) — the same install, hands-free, into a QEMU VM: one OS
   disk and two data disks with by-id serials, UEFI, mk-drive on
   `http://localhost:8810`, ssh on port 2222 (`nasadmin` / `mk-nas`). `make vm-boot`

@@ -1,14 +1,14 @@
 /** Shares: the generated files, the verbs' argv, the refusals, the password kept off argv and out of the audit. */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Share } from '../../shared/types.ts';
 import { Db } from '../src/db.ts';
 import type { RunOptions, Runner, RunResult } from '../src/run.ts';
 import { handle } from '../src/server.ts';
-import { exportsFile, listShares, nfsClient, smbAccessOf, smbConf, smbUserName, type ShareConfig } from '../src/shares.ts';
+import { exportsFile, listShares, reapply, nfsClient, smbAccessOf, smbConf, smbUserName, type ShareConfig } from '../src/shares.ts';
 import type { Deps } from '../src/verbs.ts';
 
 const NET = {
@@ -76,16 +76,20 @@ test('smb.conf: one section per SMB share, the owner forced, Time Machine only w
   assert.ok(!conf.includes('[nfsonly]') && !conf.includes('[gone]'));
 });
 
-test('exports: one line per NFS share, private networks by default, everyone squashed to the owner', () => {
+test('exports: one line per NFS share for exactly its clients, everyone squashed to the owner; no clients, no export', () => {
   const out = exportsFile(
     [
       share({ smb: false, nfs: true }),
       share({ dataset: 'tank/docs', name: 'docs', mountpoint: '/srv/locations/docs', smb: false, nfs: true, nfsClients: ['192.168.1.0/24', 'laptop'] }),
+      share({ dataset: 'tank/all', name: 'all', mountpoint: '/srv/locations/all', smb: false, nfs: true, nfsClients: ['*'] }),
     ],
     cfg('/x'),
   );
-  assert.match(out, /^\/srv\/locations\/photos 10\.0\.0\.0\/8\(rw,sync,no_subtree_check,all_squash,anonuid=1000,anongid=1000\) 172\.16/m);
-  assert.match(out, /^\/srv\/locations\/docs 192\.168\.1\.0\/24\(rw,[^)]*\) laptop\(rw/m);
+  assert.match(out, /^\/srv\/locations\/docs 192\.168\.1\.0\/24\(rw,sync,no_subtree_check,all_squash,anonuid=1000,anongid=1000\) laptop\(rw/m);
+  assert.match(out, /^\/srv\/locations\/all \*\(rw,/m, '* only because it was typed');
+  assert.ok(!/^\/srv\/locations\/photos /m.test(out), 'a share stored with no clients is exported to nobody');
+  assert.match(out, /^# \/srv\/locations\/photos: NFS is on but no hosts or networks are allowed yet/m);
+  for (const range of ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16']) assert.ok(!out.includes(range), `never a default ${range}`);
 });
 
 test('names: SMB user names and NFS clients are tight', () => {
@@ -116,6 +120,7 @@ test('share.set writes both files whole, starts the daemons it needs, reloads; s
     const f = fake({
       [DS]: ALL,
       [`${DS} -r tank/photos`]: row('tank/photos', '/srv/locations/photos'),
+      [`${DS} -r tank/docs`]: row('tank/docs', '/srv/locations/docs'),
       [`${DS} -r tank/nope`]: { argv: [], exitCode: 1, stdout: '', stderr: "cannot open 'tank/nope': dataset does not exist" },
       'getent passwd 1000': 'alice:x:1000:1000::/home/alice:/bin/bash\n',
       'getent group 1000': 'alice:x:1000:\n',
@@ -159,6 +164,8 @@ test('share.set writes both files whole, starts the daemons it needs, reloads; s
     for (const [args, re] of [
       [{ dataset: 'tank/nope', smb: true }, /not-found|no such/],
       [{ dataset: 'tank/photos', nfsClients: ['a(rw)'] }, /not a host/],
+      [{ dataset: 'tank/photos', nfsClients: [] }, /bad-args name the hosts or networks allowed to mount it/],
+      [{ dataset: 'tank/docs', smb: false, nfs: true }, /bad-args name the hosts or networks allowed to mount it/],
       [{ dataset: 'tank/photos', smb: 'yes' }, /must be true or false/],
       [{ dataset: 'tank/photos', smb: true, guest: true }, /unexpected argument/],
     ] as [Record<string, unknown>, RegExp][]) {
@@ -178,6 +185,77 @@ test('share.set writes both files whole, starts the daemons it needs, reloads; s
     );
     res = await handle({ id: 6, verb: 'share.remove', args: { dataset: 'tank/photos' } }, deps, audit);
     assert.equal(!res.ok && res.error.code, 'bad-args');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('a share stored with NFS on and no clients (before a list was required): exported to nobody, NFS stays down, SMB can still change', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'mk-nas-shares-'));
+  try {
+    const f = fake({
+      [DS]: ALL,
+      [`${DS} -r tank/docs`]: row('tank/docs', '/srv/locations/docs'),
+      'getent passwd 1000': 'alice:x:1000:1000::/home/alice:/bin/bash\n',
+      'getent group 1000': 'alice:x:1000:\n',
+      'systemctl *': '',
+      'smbcontrol *': '',
+      'exportfs *': '',
+    });
+    const db = new Db(':memory:');
+    db.setShare({ dataset: 'tank/docs', smb: false, timeMachine: false, nfs: true, nfsClients: [], smbAccess: null });
+    const deps: Deps = {
+      run: f.run,
+      version: 't',
+      db,
+      locationsDir: '/srv/locations',
+      shares: cfg(dir),
+      replication: { keyFile: join(dir, 'key'), knownHosts: join(dir, 'kh') },
+      spawn: () => {},
+      network: NET,
+      backup: BKP,
+    };
+    const res = await handle({ id: 1, verb: 'share.set', args: { dataset: 'tank/docs', smb: true } }, deps, async () => {});
+    assert.equal(res.ok, true, JSON.stringify(res));
+    const exports = await readFile(join(dir, 'mk-nas.exports'), 'utf8');
+    assert.ok(!/^\/srv\/locations\/docs /m.test(exports), exports);
+    assert.match(exports, /^# \/srv\/locations\/docs: NFS is on but no hosts/m);
+    assert.ok(
+      f.calls.some((c) => c.argv.join(' ') === 'systemctl disable --now nfs-server'),
+      'nothing exported: nfs-server stays down',
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('on start: the files are rewritten when this version writes them differently, left alone when right or a dataset is not mounted', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'mk-nas-shares-'));
+  try {
+    const f = fake({
+      [DS]: ALL,
+      'getent passwd 1000': 'alice:x:1000:1000::/home/alice:/bin/bash\n',
+      'getent group 1000': 'alice:x:1000:\n',
+      'systemctl *': '',
+      'smbcontrol *': '',
+      'exportfs *': '',
+    });
+    const db = new Db(':memory:');
+    const c = cfg(dir);
+    assert.equal(await reapply(f.run, db, c), false, 'no shares: nothing to write');
+    db.setShare({ dataset: 'tank/docs', smb: true, timeMachine: false, nfs: true, nfsClients: [], smbAccess: null });
+    // what an older version wrote: the private networks for a share with no clients
+    await writeFile(join(dir, 'mk-nas.exports'), '/srv/locations/docs 10.0.0.0/8(rw)\n');
+    assert.equal(await reapply(f.run, db, c), true);
+    assert.match(await readFile(join(dir, 'mk-nas.exports'), 'utf8'), /^# \/srv\/locations\/docs: NFS is on but no hosts/m);
+    const reloads = () => f.calls.filter((x) => ['systemctl', 'smbcontrol', 'exportfs'].includes(x.argv[0])).length;
+    const before = reloads();
+    assert.equal(await reapply(f.run, db, c), false, 'already right');
+    assert.equal(reloads(), before, 'already right: no reload');
+    db.setShare({ dataset: 'tank/gone', smb: true, timeMachine: false, nfs: false, nfsClients: [], smbAccess: null });
+    await writeFile(join(dir, 'mk-nas.exports'), 'stale\n');
+    assert.equal(await reapply(f.run, db, c), false, 'a dataset not mounted: the files wait for the next change');
+    assert.equal(await readFile(join(dir, 'mk-nas.exports'), 'utf8'), 'stale\n');
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
