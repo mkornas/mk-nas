@@ -36,7 +36,8 @@ from the backup only these keys are taken, each value checked —
 `DRIVE_PASSWORD_LOGIN` (`on`, `lan`, `off`), `DRIVE_OIDC_ISSUER` (an
 http(s) URL), `DRIVE_OIDC_CLIENT_ID`, `DRIVE_OIDC_CLIENT_SECRET`,
 `DRIVE_OIDC_NAME` (one line, no quotes, `$`, backslash or control
-characters inside) and `CLOUDFLARE_TUNNEL_TOKEN` (a tunnel token). Each
+characters inside), `CLOUDFLARE_TUNNEL_TOKEN` (a tunnel token) and
+`DRIVE_NAS_MONITOR_TOKEN` (32 to 256 token characters). Each
 replaces this box's line for the key, or is added. Nothing else comes
 back: not `MK_NAS_GID` (this box's group), and not `DRIVE_IMAGE`, since
 a restored file must not choose the image the drive runs — set it again

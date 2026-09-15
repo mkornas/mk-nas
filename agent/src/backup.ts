@@ -165,6 +165,8 @@ const ENV_KEYS: Record<string, (v: string) => boolean> = {
   DRIVE_OIDC_CLIENT_ID: plain,
   DRIVE_OIDC_CLIENT_SECRET: plain,
   DRIVE_OIDC_NAME: plain,
+  // the drive's read-only monitor route for a dashboard elsewhere: 32 to 256 token characters, as the drive requires
+  DRIVE_NAS_MONITOR_TOKEN: (v) => /^[A-Za-z0-9._~+/=-]{32,256}$/.test(v),
   CLOUDFLARE_TUNNEL_TOKEN: (v) => {
     try {
       return tokenOf(v).token === v;

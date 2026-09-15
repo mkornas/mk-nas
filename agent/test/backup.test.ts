@@ -163,6 +163,7 @@ test("mergeDriveEnv: this box's file, the allow-listed keys from the backup, not
     "DRIVE_OIDC_CLIENT_SECRET='s3cr3t-value'",
     'DRIVE_OIDC_NAME=Company sign-in',
     `CLOUDFLARE_TUNNEL_TOKEN=${TOKEN}`,
+    'DRIVE_NAS_MONITOR_TOKEN=k2x9T4qLmP8vR3wY7nB1cZ6hJ5dF0gS2',
   ].join('\n');
   assert.equal(
     mergeDriveEnv(current, backup),
@@ -179,6 +180,7 @@ test("mergeDriveEnv: this box's file, the allow-listed keys from the backup, not
       "DRIVE_OIDC_CLIENT_SECRET='s3cr3t-value'",
       'DRIVE_OIDC_NAME=Company sign-in',
       `CLOUDFLARE_TUNNEL_TOKEN=${TOKEN}`,
+      'DRIVE_NAS_MONITOR_TOKEN=k2x9T4qLmP8vR3wY7nB1cZ6hJ5dF0gS2',
       '',
     ].join('\n'),
   );
@@ -192,6 +194,7 @@ test("mergeDriveEnv: this box's file, the allow-listed keys from the backup, not
     'DRIVE_OIDC_CLIENT_SECRET=${NODE_OPTIONS}',
     'DRIVE_OIDC_NAME="unterminated',
     'CLOUDFLARE_TUNNEL_TOKEN=--token abc',
+    'DRIVE_NAS_MONITOR_TOKEN=short',
     'export DRIVE_GID=1001',
     'DRIVE_OIDC_CLIENT_ID=a\u0007b',
   ].join('\n');
@@ -205,6 +208,7 @@ test("mergeDriveEnv: this box's file, the allow-listed keys from the backup, not
     'DRIVE_OIDC_CLIENT_SECRET',
     'DRIVE_OIDC_NAME',
     'CLOUDFLARE_TUNNEL_TOKEN',
+    'DRIVE_NAS_MONITOR_TOKEN',
     'DRIVE_GID',
     'DRIVE_OIDC_CLIENT_ID',
   ])
