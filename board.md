@@ -9,8 +9,6 @@ One card per line, ranked top-down inside each column. `#p0`..`#p3` = priority, 
 
 ## Now
 
-- [ ] **SMB access per share** each SMB share lists who may open it (read or read and write), prefilled in the drive from the grants on that location; Samba gets exactly that list (valid users, read only, write list); a share nobody may open is left out of smb.conf; existing shares become admins-only when the drive first sees them; removing an SMB user drops them from every list #p1 #shares #security
-
 ## Next
 
 - [ ] **Phase 0 — baseline** Ubuntu Server 24.04 on a small PC with Cockpit + 45Drives ZFS and file-sharing plugins; mk-drive on the datasets; two weeks of use; write notes/missing.md with what is still missing #p1 #phase0
@@ -30,10 +28,12 @@ One card per line, ranked top-down inside each column. `#p0`..`#p3` = priority, 
 - [ ] *Security: installer defaults** postinst adds the first user to docker (root without a password) on every upgrade; the stick allows ssh password login: drop the docker group, keys-only or document #p2 #security
 - [ ] *Security: NFS open to every private network** the default exports rw to 10/8, 172.16/12, 192.168/16 with no auth: no default clients, ask for them #p2 #security
 - [ ] *Security: CI and packaging hardening** persist-credentials false, actions pinned by SHA, permissions on test.yml, vm.yml dispatch only from main and an isolated runner, chmod -R go-w in deb.sh, gpgv the Ubuntu SHA256SUMS, cloudflared by digest, cap_drop/no-new-privileges, re-validate DB rows in replicate, upgrade.sh UNSIGNED hint removed #p2 #security
+- [ ] **Disabling or deleting a drive account leaves SMB access** Samba does not know the drive disabled someone: on disable, take the account off every share list (and restore nothing on enable); on delete, remove its SMB user (user.remove), which also drops it from the lists #p1 #shares #security
 
 ## Later
 
 ## Done
+- [x] **SMB access per share** each SMB share lists who may open it (read or read and write), prefilled in the drive from the grants on that location; Samba gets exactly that list (valid users, read only, write list); a share nobody may open is left out of smb.conf; existing shares become admins-only when the drive first sees them; removing an SMB user drops them from every list #p1 #shares #security [[smb-access-per-share]]
 - [x] *Security: user verbs touch any Unix account** user.remove runs userdel on any existing account (system users, the admin login); user.set/smbPassword modify existing accounts: only accounts mk-nas recorded #p0 #security [[security-user-verbs-touch-any-unix-account-user-remove-runs]]
 - [x] *Security: restore to root code** backup.restore takes mk-drive.env from any dataset into /opt/mk-drive/.env, which mk-nasd loads (EnvironmentFile: NODE_OPTIONS runs code as root); restore copies follow symlinks in the container-writable /opt/mk-drive/data: no EnvironmentFile (read DRIVE_UID/GID only), allow-listed .env keys, no symlinks. Audit 2026-09-15 #p0 #security [[security-restore-to-root-code-backup-restore-takes-mk-drive]]
 - [x] **Cloudflare Tunnel from the UI** Storage → Network gets a 'Reach the drive from outside' card: paste the tunnel token, see the hostname it serves, whether it is connected and when it last was. cloudflared runs as a second container in the /opt/mk-drive stack, started only when a token is set (the agent never installs packages from a third-party repo); an agent verb stores the token in a root-only file, the drive only ever shows it masked, the settings backup includes it. Setting, changing or removing the tunnel is refused through the tunnel itself (it would cut the connection in use) — from home only. Hostnames stay managed in Cloudflare's dashboard. Until then: ssh, docs/first-install.md 'Reach the drive from outside' #p2 #remote [[cloudflare-tunnel-from-the-ui]]
