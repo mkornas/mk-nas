@@ -310,7 +310,14 @@ Worth knowing:
 - **Health:** the Storage overview says when anything needs you — a disk
   failing, a pool degraded, a scrub that found errors — and shows what ZFS
   reported in the last day. With mk-dashboard running, the same problems
-  arrive as alerts.
+  arrive as alerts. That is optional: on a dashboard on another machine,
+  put a long random token in the drive's settings and restart it
+  (`sudo nano /opt/mk-drive/.env`, the line
+  `DRIVE_NAS_MONITOR_TOKEN=<openssl rand -hex 32>`, then
+  `sudo systemctl restart mk-drive`), and give the dashboard the drive's
+  address and the same token (`DASH_NAS_URL`, `DASH_NAS_TOKEN`). The token
+  reads health only and opens nothing else; without the line the route
+  does not exist.
 - **Ubuntu updates:** security updates install themselves. Once a month,
   or when the overview asks for it, over ssh:
   `sudo apt update && sudo apt upgrade`, then reboot if a new kernel came.
