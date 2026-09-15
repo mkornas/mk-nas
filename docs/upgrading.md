@@ -47,6 +47,22 @@ was built for. A drive newer than its agent shows a banner on every page
 asking for the upgrade above, and the Storage pages may misbehave until
 then. An agent newer than its drive is fine: verbs are only ever added.
 
+## What 0.8.0 changes on a box
+
+- **SMB access per share.** Each SMB share has its own list of who may open
+  it, Read or Read and write, set in the share dialog and prefilled from
+  the drive's grants on that folder. Samba gets exactly that list; a share
+  nobody may open is not offered at all. Existing shares become admins-only
+  (read and write) when the drive first starts on this version — add others
+  in the share dialog. The CLI's `mk-nas shares` shows who can open each one.
+- Disabling an account in the drive takes it off every share list, and
+  deleting one removes its SMB user on the box.
+- The drive has an optional read-only monitor route for a dashboard on
+  another machine: set `DRIVE_NAS_MONITOR_TOKEN` (32 characters or more) in
+  `/opt/mk-drive/.env`; empty leaves it off. A settings restore brings it
+  back.
+- Pins mk-drive 0.7.0.
+
 ## What 0.7.1 changes on a box
 
 Security fixes from the audit of 2026-09-15. Install it.
