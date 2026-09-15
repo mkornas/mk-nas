@@ -9,9 +9,6 @@ One card per line, ranked top-down inside each column. `#p0`..`#p3` = priority, 
 
 ## Now
 
-- [ ] *Security: restore to root code** backup.restore takes mk-drive.env from any dataset into /opt/mk-drive/.env, which mk-nasd loads (EnvironmentFile: NODE_OPTIONS runs code as root); restore copies follow symlinks in the container-writable /opt/mk-drive/data: no EnvironmentFile (read DRIVE_UID/GID only), allow-listed .env keys, no symlinks. Audit 2026-09-15 #p0 #security
-- [ ] *Security: user verbs touch any Unix account** user.remove runs userdel on any existing account (system users, the admin login); user.set/smbPassword modify existing accounts: only accounts mk-nas recorded #p0 #security
-
 ## Next
 
 - [ ] **Phase 0 — baseline** Ubuntu Server 24.04 on a small PC with Cockpit + 45Drives ZFS and file-sharing plugins; mk-drive on the datasets; two weeks of use; write notes/missing.md with what is still missing #p1 #phase0
@@ -35,6 +32,8 @@ One card per line, ranked top-down inside each column. `#p0`..`#p3` = priority, 
 ## Later
 
 ## Done
+- [x] *Security: user verbs touch any Unix account** user.remove runs userdel on any existing account (system users, the admin login); user.set/smbPassword modify existing accounts: only accounts mk-nas recorded #p0 #security [[security-user-verbs-touch-any-unix-account-user-remove-runs]]
+- [x] *Security: restore to root code** backup.restore takes mk-drive.env from any dataset into /opt/mk-drive/.env, which mk-nasd loads (EnvironmentFile: NODE_OPTIONS runs code as root); restore copies follow symlinks in the container-writable /opt/mk-drive/data: no EnvironmentFile (read DRIVE_UID/GID only), allow-listed .env keys, no symlinks. Audit 2026-09-15 #p0 #security [[security-restore-to-root-code-backup-restore-takes-mk-drive]]
 - [x] **Cloudflare Tunnel from the UI** Storage → Network gets a 'Reach the drive from outside' card: paste the tunnel token, see the hostname it serves, whether it is connected and when it last was. cloudflared runs as a second container in the /opt/mk-drive stack, started only when a token is set (the agent never installs packages from a third-party repo); an agent verb stores the token in a root-only file, the drive only ever shows it masked, the settings backup includes it. Setting, changing or removing the tunnel is refused through the tunnel itself (it would cut the connection in use) — from home only. Hostnames stay managed in Cloudflare's dashboard. Until then: ssh, docs/first-install.md 'Reach the drive from outside' #p2 #remote [[cloudflare-tunnel-from-the-ui]]
 - [x] *Idle disks stay idle** hourly snapshots are taken even when nothing changed, which writes to the pool every hour; skip a scheduled snapshot when the dataset's written property is 0 since the last one. SMART reads from the drive (disks, health, anything polling health like mk-dashboard) run smartctl without -n standby and would wake a sleeping disk: read standby-aware and show the last reading with 'asleep' #p2 #disks [[idle-disks-stay-idle-hourly-snapshots-are-taken-even-when-no]]
 - [x] *Self-tests at night, and shown** the tick starts a long SMART self-test as soon as one is due, at any hour (the pilot box's two data disks started theirs at 08:01 and 08:56, hours of full-surface reads and a few degrees warmer); start them only in a night window, one disk at a time as now, and show a running self-test on the overview's disk bay so a warm idle disk is explained #p2 #smart [[self-tests-at-night-and-shown-the-tick-starts-a-long-smart-s]]

@@ -1,0 +1,3 @@
+# *Security: restore to root code** backup.restore takes mk-drive.env from any dataset into /opt/mk-drive/.env, which mk-nasd loads (EnvironmentFile: NODE_OPTIONS runs code as root); restore copies follow symlinks in the container-writable /opt/mk-drive/data: no EnvironmentFile (read DRIVE_UID/GID only), allow-listed .env keys, no symlinks. Audit 2026-09-15
+
+- 2026-09-15 14:45 — Fixed in a72fe01 (mk-nas 0.7.1), with tests; verified in the VM: no EnvironmentFile, user.remove www-data refused, backup.set to a location refused, SMB password for our account still works. — main @ a72fe01 Security fixes from the 2026-09-15 audit
