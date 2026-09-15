@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { parseDatasetList, parsePoolList, parsePoolStatus, parseScan, parseSnapshotList } from '../src/zfs.ts';
+import { parseDatasetList, parsePoolList, parsePoolStatus, parseScan, parseSnapshotList, parseWritten } from '../src/zfs.ts';
 
 const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8');
 
@@ -79,4 +79,15 @@ test('zfs list -Hp snapshots', () => {
       creation: '2025-09-12T10:00:00.000Z',
     },
   ]);
+});
+
+test('zfs get written: bytes per dataset; anything else is left out (and counts as changed)', () => {
+  const w = parseWritten('nas/files\t0\nnas/backups\t1048576\nnas/gone\t-\n');
+  assert.deepEqual(
+    [...w],
+    [
+      ['nas/files', 0],
+      ['nas/backups', 1048576],
+    ],
+  );
 });

@@ -127,13 +127,31 @@ export function summarizeSmart(raw: unknown): SmartSummary {
   };
 }
 
-export const smartArgv = (dev: string) => ['smartctl', '-j', '-H', '-A', '-i', dev];
+/** The listing's read: health, attributes, and a running self-test; a disk in standby is left asleep. */
+export const smartArgv = (dev: string) => ['smartctl', '-j', '-n', 'standby', '-H', '-A', '-i', '-c', '-l', 'selftest', dev];
 /** The detail view adds the self-test status and log. */
 export const smartDetailArgv = (dev: string) => ['smartctl', '-j', '-H', '-A', '-i', '-c', '-l', 'selftest', dev];
 /** The timer's read: a disk in standby is left asleep (smartctl exits 2 and gives no JSON). */
 export const smartQuietArgv = (dev: string) => ['smartctl', '-j', '-n', 'standby', '-c', '-l', 'selftest', dev];
 
 const kindOf = (s: string | undefined): SelfTestKind => (/extended|long/i.test(s ?? '') ? 'long' : /short/i.test(s ?? '') ? 'short' : 'other');
+
+/**
+ * Whether the disk can run self-tests, from a read that asked for `-c -l selftest`: ATA says so in its capabilities;
+ * smartctl leaves out an NVMe drive's self-test log when the controller has no self-test command. null when unknown.
+ */
+export function selfTestSupported(raw: unknown): boolean | null {
+  const j = (raw ?? {}) as Record<string, any>;
+  if (j.device?.protocol === 'NVMe' || j.device?.type === 'nvme') return 'nvme_self_test_log' in j;
+  const ata = j.ata_smart_data?.capabilities?.self_tests_supported;
+  return typeof ata === 'boolean' ? ata : null;
+}
+
+/** smartctl -n standby found the disk asleep: it says so in its messages and exits 2 without reading anything. */
+export function inStandby(raw: unknown): boolean {
+  const messages = ((raw ?? {}) as Record<string, any>).smartctl?.messages;
+  return Array.isArray(messages) && messages.some((m: { string?: string }) => /Device is in STANDBY/i.test(m?.string ?? ''));
+}
 
 /** Self-tests as smartctl reports them: ATA from the self-test status and log, NVMe from its self-test log. Newest first. */
 export function parseSelfTests(raw: unknown): Smart['selfTest'] {
@@ -162,37 +180,54 @@ export function parseSelfTests(raw: unknown): Smart['selfTest'] {
       result: t.self_test_result?.string ?? '?',
       hours: t.power_on_hours ?? null,
     });
-  return { running, tests };
+  return { running, tests, supported: selfTestSupported(raw) };
 }
 
 /** The timer's rule: a long test is due when none finished in the last 720 hours of power-on time (about a month of an always-on box) and none runs. */
 export function longTestDue(raw: unknown): boolean {
   const j = (raw ?? {}) as Record<string, any>;
-  const { running, tests } = parseSelfTests(raw);
-  if (running) return false;
+  const { running, tests, supported } = parseSelfTests(raw);
+  if (running || supported === false) return false;
   const hours = typeof j.power_on_time?.hours === 'number' ? j.power_on_time.hours : null;
   const last = tests.find((t) => t.kind === 'long' && t.hours !== null);
   if (!last || hours === null) return true;
   return hours - last.hours! >= 720;
 }
 
-/** smartctl exits non-zero for many non-fatal reasons; only bits 0 (bad command line) and 1 (device open failed) mean no JSON. */
+/** smartctl exits non-zero for many non-fatal reasons; only bits 0 (bad command line) and 1 (device open failed, or asleep with -n standby) mean no data. */
 export async function readSmart(run: Runner, dev: string, argv = smartArgv(dev)): Promise<unknown | null> {
-  const r = await run(argv);
-  if (r.exitCode === null || (r.exitCode & 0b11) !== 0 || !r.stdout.trim()) return null;
-  try {
-    return JSON.parse(r.stdout);
-  } catch {
-    return null;
-  }
+  const r = await readSmartOrSleep(run, dev, argv);
+  return r.asleep ? null : r.raw;
 }
+
+/** The same read, telling a disk in standby apart from one that gave nothing. */
+export async function readSmartOrSleep(run: Runner, dev: string, argv = smartArgv(dev)): Promise<{ raw: unknown | null; asleep: boolean }> {
+  const r = await run(argv);
+  if (r.exitCode === null || !r.stdout.trim()) return { raw: null, asleep: false };
+  let raw: unknown;
+  try {
+    raw = JSON.parse(r.stdout);
+  } catch {
+    return { raw: null, asleep: false };
+  }
+  if ((r.exitCode & 0b11) === 0) return { raw, asleep: false };
+  return { raw: null, asleep: inStandby(raw) };
+}
+
+/** What each disk said the last time it was awake, so a listing shows it instead of waking the disk. Lives as long as the agent. */
+const lastAwake = new Map<string, SmartSummary>();
 
 export async function listDisks(run: Runner, byIdDir?: string): Promise<Disk[]> {
   const [devices, ids, members] = await Promise.all([parseLsblk(await must(run, LSBLK_ARGV)), byIdMap(byIdDir), poolMembers(run)]);
   return Promise.all(
     devices.map(async (d) => {
       const links = ids.get(d.path) ?? [];
-      const raw = await readSmart(run, d.path);
+      const { raw, asleep } = await readSmartOrSleep(run, d.path);
+      let smart: SmartSummary | null = null;
+      if (raw) {
+        smart = { ...summarizeSmart(raw), testing: parseSelfTests(raw).running };
+        lastAwake.set(d.path, smart);
+      } else if (asleep) smart = lastAwake.get(d.path) ?? null;
       return {
         id: links.length ? pickId(links) : d.path,
         ids: links,
@@ -203,7 +238,8 @@ export async function listDisks(run: Runner, byIdDir?: string): Promise<Disk[]> 
         transport: d.tran || null,
         rotational: d.rota === true || d.rota === '1',
         use: useOf(d, members),
-        smart: raw ? summarizeSmart(raw) : null,
+        ...(asleep ? { asleep: true } : {}),
+        smart,
       };
     }),
   );
@@ -234,6 +270,7 @@ export async function startSelfTest(run: Runner, id: string, kind: unknown, byId
   const k = selfTestKind(kind);
   const dev = await resolveDisk(id, byIdDir);
   const before = await getSmart(run, id, byIdDir);
+  if (before.selfTest.supported === false) throw new BadArgs(`${id}: this disk cannot run self-tests`);
   if (before.selfTest.running) throw new BadArgs(`${id}: a ${before.selfTest.running.kind} test is already running`);
   await must(run, ['smartctl', '-j', '-t', k, dev]);
   return getSmart(run, id, byIdDir);

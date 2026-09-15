@@ -168,7 +168,7 @@ automatic; the Pools page lets you change the scrub schedule.
 
 Then give each one **automatic snapshots** (the clock icon). A sensible
 start: 24 hourly, 14 daily, 8 weekly, 6 monthly. A snapshot costs nothing
-until files change, and brings back a deleted or overwritten file from
+until files change (and none is taken while nothing changes), and brings back a deleted or overwritten file from
 **Storage → Snapshots** (roll back) or from the file's versions in the drive.
 
 ## 7. Reach it from Finder, Explorer and phones (optional)
@@ -226,9 +226,13 @@ ssh <user>@<name>.local sudo mk-nas version  # the agent's version; the drive's 
 `sudo` on the box still asks for its password; that is on purpose.
 
 **What now runs by itself**, with nothing to do: the automatic snapshots
-and their pruning, a monthly scrub of every pool, a monthly long SMART
-self-test of every disk (one disk at a time, a sleeping disk is left
-asleep), the daily settings backup, and Ubuntu's security updates. mk-nas
+and their pruning (a dataset nothing was written to since its last
+snapshot gets no new one, so an idle pool is not written to every hour), a
+monthly scrub of every pool, a monthly long SMART self-test of every disk
+that supports one (started between 01:00 and 05:00, one disk at a time, a
+sleeping disk is left asleep — a disk warm while nothing is copied is often
+just running one: the Disks page says so), the daily settings backup, and
+Ubuntu's security updates. mk-nas
 and the drive never update themselves; see below.
 
 ## Reach the drive from outside (optional)

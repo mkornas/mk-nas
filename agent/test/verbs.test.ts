@@ -152,9 +152,9 @@ test('disks: lsblk + by-id + smart, health sees the pending sectors', async () =
     const f = fake({
       'lsblk -J -b -o NAME,PATH,SIZE,MODEL,SERIAL,ROTA,TYPE,TRAN,MOUNTPOINT,FSTYPE,LABEL': fx('lsblk.json'),
       'zpool list -v -H -P': `tank\t1.8T\t1M\t1.8T\t-\t-\t0%\t0%\t1.00x\tONLINE\t-\n\tmirror-0\t1.8T\t1M\t1.8T\t-\t-\t0%\t0%\t-\tONLINE\n\t${join(byId, 'ata-WDC_WD20EFRX-68EUZN0_WD-AAAAAAAAAAAA-part1')}\t1.8T\t-\t-\t-\t-\t-\t-\t-\tONLINE\n`,
-      'smartctl -j -H -A -i /dev/sda': fx('smartctl-ata.json'),
-      'smartctl -j -H -A -i /dev/sdb': { argv: [], exitCode: 2, stdout: '', stderr: 'Smartctl open device: /dev/sdb failed' },
-      'smartctl -j -H -A -i /dev/nvme0n1': { argv: [], exitCode: 4, stdout: fx('smartctl-nvme.json'), stderr: '' },
+      'smartctl -j -n standby -H -A -i -c -l selftest /dev/sda': fx('smartctl-ata.json'),
+      'smartctl -j -n standby -H -A -i -c -l selftest /dev/sdb': { argv: [], exitCode: 2, stdout: '', stderr: 'Smartctl open device: /dev/sdb failed' },
+      'smartctl -j -n standby -H -A -i -c -l selftest /dev/nvme0n1': { argv: [], exitCode: 4, stdout: fx('smartctl-nvme.json'), stderr: '' },
       'smartctl -j -H -A -i -c -l selftest /dev/nvme0n1': { argv: [], exitCode: 4, stdout: fx('smartctl-nvme.json'), stderr: '' },
       'zpool list -H -p -o name,health,size,allocated,free,capacity,fragmentation': POOLS,
     });
@@ -318,4 +318,47 @@ test('update.install: the runner is started detached for exactly the checked rel
   res = await handle({ id: 4, verb: 'update.install', args: { version: '0.9.0' } }, d, audit);
   assert.match(!res.ok ? res.error.message : '', /already running/);
   assert.equal(spawned.length, 1);
+});
+
+test('disks: a disk in standby is not woken; the listing shows its last awake reading and says it is asleep', async () => {
+  const lsblk = fx('lsblk.json');
+  let sleeping = false;
+  const asleep = JSON.stringify({ smartctl: { exit_status: 2, messages: [{ string: 'Device is in STANDBY mode, exit(2)', severity: 'information' }] } });
+  const run: Runner = async (argv) => {
+    const cmd = argv.join(' ');
+    if (cmd.startsWith('lsblk')) return { argv, exitCode: 0, stdout: lsblk, stderr: '' };
+    if (cmd === 'smartctl -j -n standby -H -A -i -c -l selftest /dev/sda')
+      return sleeping ? { argv, exitCode: 2, stdout: asleep, stderr: '' } : { argv, exitCode: 0, stdout: fx('smartctl-ata-selftest.json'), stderr: '' };
+    if (cmd.startsWith('smartctl')) return { argv, exitCode: 2, stdout: '', stderr: 'no such device' };
+    if (cmd.startsWith('zpool list')) return { argv, exitCode: 0, stdout: '', stderr: '' };
+    return { argv, exitCode: 1, stdout: '', stderr: `fake: ${cmd}` };
+  };
+  type D = { dev: string; asleep?: boolean; smart: { temperature: number | null; testing?: { kind: string; percentDone: number | null } | null } | null };
+  const list = async () => {
+    const res = await handle({ id: 1, verb: 'disks' }, deps(run), audit);
+    assert.equal(res.ok, true, JSON.stringify(res));
+    return (res.ok ? (res.result as D[]) : []).find((d) => d.dev === '/dev/sda')!;
+  };
+  const awake = await list();
+  assert.equal(awake.asleep, undefined);
+  assert.deepEqual([awake.smart?.temperature, awake.smart?.testing], [34, { kind: 'long', percentDone: 10 }], 'a running self-test comes with the listing');
+  sleeping = true;
+  const later = await list();
+  assert.equal(later.asleep, true);
+  assert.equal(later.smart?.temperature, 34, 'the last reading, not a woken disk');
+});
+
+test('smart.test: refused on a disk that cannot run self-tests', async () => {
+  const byId = await mkdtemp(join(tmpdir(), 'mk-nas-byid-'));
+  try {
+    await symlink('/dev/nvme0n1', join(byId, 'nvme-KINGSTON_TEST'));
+    const nvme = JSON.parse(fx('smartctl-nvme-selftest.json'));
+    delete nvme.nvme_self_test_log;
+    const f = fake({ 'smartctl -j -H -A -i -c -l selftest /dev/nvme0n1': JSON.stringify(nvme) });
+    const res = await handle({ id: 1, verb: 'smart.test', args: { disk: 'nvme-KINGSTON_TEST', kind: 'long' } }, deps(f.run, { byIdDir: byId }), audit);
+    assert.match(!res.ok ? res.error.message : '', /cannot run self-tests/);
+    assert.ok(!f.calls.some((c) => c.includes('-t')), 'no test was started');
+  } finally {
+    await rm(byId, { recursive: true, force: true });
+  }
 });

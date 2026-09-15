@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { longTestDue, parseLsblk, parseSelfTests, pickId, summarizeSmart, useOf } from '../src/disks.ts';
+import { inStandby, longTestDue, parseLsblk, parseSelfTests, pickId, selfTestSupported, summarizeSmart, useOf } from '../src/disks.ts';
 
 const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8');
 
@@ -59,6 +59,7 @@ test('self-tests: ata status and log, nvme log; a long test is due after 720 pow
       { kind: 'short', passed: true, result: 'Completed without error', hours: 40012 },
       { kind: 'long', passed: false, result: 'Completed: read failure', hours: 39000 },
     ],
+    supported: null,
   });
   assert.equal(longTestDue(ata), false, 'one is running');
   delete ata.ata_smart_data;
@@ -66,8 +67,34 @@ test('self-tests: ata status and log, nvme log; a long test is due after 720 pow
   ata.power_on_time.hours = 41000;
   assert.equal(longTestDue(ata), false, '500 h: not yet');
   const nvme = JSON.parse(fx('smartctl-nvme-selftest.json'));
-  assert.deepEqual(parseSelfTests(nvme), { running: null, tests: [{ kind: 'short', passed: true, result: 'Completed without error', hours: 8990 }] });
+  assert.deepEqual(parseSelfTests(nvme), {
+    running: null,
+    tests: [{ kind: 'short', passed: true, result: 'Completed without error', hours: 8990 }],
+    supported: true,
+  });
   assert.equal(longTestDue(nvme), true, 'never had a long one');
-  assert.deepEqual(parseSelfTests({}), { running: null, tests: [] });
+  assert.deepEqual(parseSelfTests({}), { running: null, tests: [], supported: null });
   assert.equal(longTestDue({}), true);
+});
+
+test('self-test support: ATA capabilities; an NVMe drive without the command gets no self-test log; never due when unsupported', () => {
+  const nvme = JSON.parse(fx('smartctl-nvme-selftest.json'));
+  delete nvme.nvme_self_test_log;
+  assert.equal(selfTestSupported(nvme), false, 'asked -l selftest, got no log: the controller cannot');
+  assert.equal(longTestDue(nvme), false, 'the Kingston OS disk case: skipped, not failed every tick');
+  const ata = JSON.parse(fx('smartctl-ata-selftest.json'));
+  delete ata.ata_smart_data.self_test.status;
+  ata.ata_smart_data.capabilities = { self_tests_supported: false };
+  assert.equal(selfTestSupported(ata), false);
+  assert.equal(longTestDue(ata), false);
+  ata.ata_smart_data.capabilities.self_tests_supported = true;
+  assert.equal(longTestDue(ata), true);
+});
+
+test('standby: smartctl -n standby says so in its messages', () => {
+  const asleep = { smartctl: { exit_status: 2, messages: [{ string: 'Device is in STANDBY mode, exit(2)', severity: 'information' }] } };
+  assert.equal(inStandby(asleep), true);
+  assert.equal(inStandby({ smartctl: { messages: [{ string: 'Device is in STANDBY (OS) mode, exit(2)' }] } }), true);
+  assert.equal(inStandby({ smartctl: { messages: [{ string: 'Smartctl open device: /dev/sdb failed: No such device' }] } }), false);
+  assert.equal(inStandby({}), false);
 });

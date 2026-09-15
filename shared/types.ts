@@ -249,6 +249,8 @@ export interface Disk {
    * 'os' when it holds a mounted filesystem; 'free' otherwise. (An agent before 0.4.4 sends no `imported`: treat it as true.)
    */
   use: { kind: 'pool'; pool: string; imported?: boolean } | { kind: 'os' } | { kind: 'free' } | { kind: 'other'; what: string };
+  /** In standby: `smart` is then the last reading the agent took while it was awake (null when it has none), so a listing never wakes a disk. From 0.6.1. */
+  asleep?: boolean;
   smart: SmartSummary | null;
 }
 
@@ -260,6 +262,8 @@ export interface SmartSummary {
   pending: number | null;
   /** NVMe percentage used, 0..100+ */
   wear: number | null;
+  /** A self-test running on the disk now. From 0.6.1. */
+  testing?: { kind: SelfTestKind; percentDone: number | null } | null;
 }
 
 export type SelfTestKind = 'short' | 'long' | 'other';
@@ -280,7 +284,12 @@ export interface Smart extends SmartSummary {
   serial: string | null;
   firmware: string | null;
   /** The test running now, and the log newest first. The timer starts a long test when none finished in the last 720 power-on hours. */
-  selfTest: { running: { kind: SelfTestKind; percentDone: number | null } | null; tests: SelfTest[] };
+  selfTest: {
+    running: { kind: SelfTestKind; percentDone: number | null } | null;
+    tests: SelfTest[];
+    /** Whether the disk can run self-tests at all (null when smartctl does not say). From 0.6.1. */
+    supported?: boolean | null;
+  };
   /** The raw smartctl JSON for the detail view. */
   raw: unknown;
 }

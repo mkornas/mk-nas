@@ -2,9 +2,10 @@
  * The snapshot timer's tick: `node src/tick.ts`, run by mk-nas-snapshot.timer
  * every 15 minutes. For every policy: take what is due, destroy what is
  * beyond the counts. Then every pool whose scrub is due gets one started,
- * and one disk without a long SMART self-test in the last 720 power-on
- * hours gets one (one per tick, so they do not all run at once; a disk
- * in standby is left asleep). Prints one line per action; exits non-zero
+ * and, at night, one disk without a long SMART self-test in the last 720
+ * power-on hours gets one (one per tick, so they do not all run at once; a
+ * disk in standby is left asleep, one that cannot run self-tests is skipped).
+ * A dataset with no writes since its newest snapshot gets no new one. Prints one line per action; exits non-zero
  * if any failed.
  */
 import { createAudit } from './audit.ts';
@@ -12,12 +13,12 @@ import { backupConfig, config, netConfig, updateConfig } from './config.ts';
 import { backupDue, runBackup } from './backup.ts';
 import { Db } from './db.ts';
 import { byIdMap, longTestDue, LSBLK_ARGV, parseLsblk, pickId, readSmart, smartQuietArgv } from './disks.ts';
-import { plan, scrubDue } from './policy.ts';
+import { plan, scrubDue, selfTestWindow } from './policy.ts';
 import { revertIfExpired } from './network.ts';
 import { noteScan, reconcileScans } from './scans.ts';
 import { must, run } from './run.ts';
 import { checkDue, checkForUpdate } from './updates.ts';
-import { getPool, listPools, listSnapshots } from './zfs.ts';
+import { getPool, listPools, listSnapshots, writtenSince } from './zfs.ts';
 
 const audit = createAudit(config.audit);
 const db = new Db(config.db);
@@ -32,8 +33,12 @@ try {
   const policies = db.policies();
   if (policies.length) {
     const existing = await listSnapshots(run);
+    const written = await writtenSince(
+      run,
+      policies.map((p) => p.dataset),
+    );
     for (const p of policies) {
-      const todo = plan(p, existing, now);
+      const todo = plan(p, existing, now, written.get(p.dataset) !== 0);
       for (const t of todo.take) {
         const name = `${t.dataset}@${t.name}`;
         try {
@@ -95,7 +100,8 @@ try {
     const c = db.updateCheck();
     console.log(c?.error ? `update check failed: ${c.error}` : `newest release: ${c?.latest?.version ?? 'none'}`);
   }
-  const [devices, ids] = await Promise.all([parseLsblk(await must(run, LSBLK_ARGV)), byIdMap()]);
+  // long self-tests only at night, and not even a SMART read for them by day
+  const [devices, ids] = selfTestWindow(now) ? await Promise.all([parseLsblk(await must(run, LSBLK_ARGV)), byIdMap()]) : [[], new Map()];
   for (const d of devices) {
     const raw = await readSmart(run, d.path, smartQuietArgv(d.path));
     if (!raw || !longTestDue(raw)) continue;
@@ -105,7 +111,7 @@ try {
       console.log(`long self-test started on ${id}`);
       await audit({ ts: now.toISOString(), verb: 'tick.smart-test', args: { disk: id }, ok: true, ms: 0 });
     } catch (e) {
-      failed++;
+      // not a failed tick: snapshots and scrubs went fine; the next night tries again and the audit says why
       console.error(`could not start a self-test on ${id}: ${(e as Error).message}`);
       await audit({ ts: now.toISOString(), verb: 'tick.smart-test', args: { disk: id }, ok: false, ms: 0, error: (e as Error).message });
     }

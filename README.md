@@ -17,7 +17,7 @@ result on the Copies page. A failed disk is replaced from the Pools page and
 the pool rebuilds; a pool from another box or an earlier install is imported
 with one click. Every pool is scrubbed monthly (or weekly, or not) by the
 same timer; scrubs and rebuilds are jobs with progress and history; every
-disk gets a long SMART self-test monthly and you can start one any time.
+disk gets a long SMART self-test monthly, at night, and you can start one any time.
 The agent follows `zpool events`, so a faulted disk or a checksum error is
 known as it happens and shows on the overview with when; the overview also
 shows the box at a glance (CPU, memory, network, disk rates, temperatures).

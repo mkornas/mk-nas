@@ -20,7 +20,11 @@ export interface Plan {
   destroy: string[];
 }
 
-export function plan(policy: Policy, existing: Snapshot[], now: Date): Plan {
+/**
+ * `changed` is false when the dataset has not been written to since its newest snapshot (ZFS's `written` is 0): nothing
+ * is taken then, so an idle dataset costs the pool no write every hour, and what is kept simply reaches further back.
+ */
+export function plan(policy: Policy, existing: Snapshot[], now: Date, changed = true): Plan {
   const out: Plan = { take: [], destroy: [] };
   for (const period of PERIODS) {
     const keep = policy[period];
@@ -33,7 +37,7 @@ export function plan(policy: Policy, existing: Snapshot[], now: Date): Plan {
       continue;
     }
     const newest = mine.at(-1);
-    const due = !newest || now.getTime() - Date.parse(newest.creation) >= LENGTH[period] - SLACK;
+    const due = changed && (!newest || now.getTime() - Date.parse(newest.creation) >= LENGTH[period] - SLACK);
     if (due) out.take.push({ dataset: policy.dataset, name: autoName(period, now) });
     const total = mine.length + (due ? 1 : 0);
     if (total > keep) out.destroy.push(...mine.slice(0, total - keep).map((s) => s.name));
@@ -42,6 +46,10 @@ export function plan(policy: Policy, existing: Snapshot[], now: Date): Plan {
 }
 
 export const SCRUB_INTERVALS: ScrubInterval[] = ['off', 'weekly', 'monthly'];
+
+/** Long SMART self-tests start only in these local hours: hours of full-surface reads belong to the night. */
+export const SELF_TEST_HOURS = { from: 1, to: 5 };
+export const selfTestWindow = (now: Date): boolean => now.getHours() >= SELF_TEST_HOURS.from && now.getHours() < SELF_TEST_HOURS.to;
 
 /**
  * Whether the timer should start a scrub now, from the pool's scan line alone

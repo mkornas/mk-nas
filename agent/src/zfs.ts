@@ -269,6 +269,23 @@ export function parseSnapshotList(out: string): Snapshot[] {
     });
 }
 
+/** `zfs get written`: bytes written to each dataset since its newest snapshot (all of it when it has none). */
+export function parseWritten(out: string): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const line of out.split('\n')) {
+    const [name, value] = line.split('\t');
+    if (name && /^\d+$/.test(value ?? '')) m.set(name, Number(value));
+  }
+  return m;
+}
+
+export async function writtenSince(run: Runner, datasets: string[]): Promise<Map<string, number>> {
+  if (!datasets.length) return new Map();
+  const r = await run(['zfs', 'get', '-H', '-p', '-o', 'name,value', 'written', ...datasets]);
+  // a dataset that went away makes zfs exit 1 but still print the others; one that is missing counts as changed
+  return parseWritten(r.stdout);
+}
+
 export async function listSnapshots(run: Runner, dataset?: string): Promise<Snapshot[]> {
   const out = await must(run, [
     'zfs',

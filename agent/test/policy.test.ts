@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Policy, Scrub, Snapshot } from '../../shared/types.ts';
-import { plan, scrubDue } from '../src/policy.ts';
+import { plan, scrubDue, selfTestWindow } from '../src/policy.ts';
 
 const policy = (over: Partial<Policy> = {}): Policy => ({ dataset: 'tank/docs', hourly: 0, daily: 0, weekly: 0, monthly: 0, updatedAt: '', ...over });
 const snap = (name: string, at: string): Snapshot => ({
@@ -74,4 +74,20 @@ test('scrubDue: from the scan line alone — never while running, after the inte
   assert.equal(scrubDue('weekly', scan({ kind: 'resilver', finishedAt: days(0) }), now), true, 'a scrub right after a rebuild');
   assert.equal(scrubDue('off', null, now), false);
   assert.equal(scrubDue('off', scan({ finishedAt: days(400) }), now), false);
+});
+
+test('unchanged since the newest snapshot: nothing is taken, a lowered count still prunes', () => {
+  const stale = [snap('auto-hourly-2026-09-12_09-00', '2026-09-12T09:00:00Z'), snap('auto-hourly-2026-09-12_10-00', '2026-09-12T10:00:00Z')];
+  assert.equal(plan(policy({ hourly: 24, daily: 7 }), stale, now, true).take.length, 2, 'written: due as before');
+  const idle = plan(policy({ hourly: 24, daily: 7 }), stale, now, false);
+  assert.deepEqual(idle.take, [], 'nothing written since: no hourly, no daily, no write to the pool');
+  assert.deepEqual(plan(policy({ hourly: 1 }), stale, now, false).destroy, ['tank/docs@auto-hourly-2026-09-12_09-00']);
+});
+
+test('self-tests start only between 01:00 and 05:00 local time', () => {
+  const at = (h: number) => new Date(2026, 8, 15, h, 30);
+  assert.deepEqual(
+    [0, 1, 4, 5, 8, 23].map((h) => selfTestWindow(at(h))),
+    [false, true, true, false, false, false],
+  );
 });
