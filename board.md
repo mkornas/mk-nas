@@ -9,6 +9,9 @@ One card per line, ranked top-down inside each column. `#p0`..`#p3` = priority, 
 
 ## Now
 
+- [ ] *Security: restore to root code** backup.restore takes mk-drive.env from any dataset into /opt/mk-drive/.env, which mk-nasd loads (EnvironmentFile: NODE_OPTIONS runs code as root); restore copies follow symlinks in the container-writable /opt/mk-drive/data: no EnvironmentFile (read DRIVE_UID/GID only), allow-listed .env keys, no symlinks. Audit 2026-09-15 #p0 #security
+- [ ] *Security: user verbs touch any Unix account** user.remove runs userdel on any existing account (system users, the admin login); user.set/smbPassword modify existing accounts: only accounts mk-nas recorded #p0 #security
+
 ## Next
 
 - [ ] **Phase 0 — baseline** Ubuntu Server 24.04 on a small PC with Cockpit + 45Drives ZFS and file-sharing plugins; mk-drive on the datasets; two weeks of use; write notes/missing.md with what is still missing #p1 #phase0
@@ -22,6 +25,12 @@ One card per line, ranked top-down inside each column. `#p0`..`#p3` = priority, 
 - [ ] *Disk spindown** an optional standby timer per pool disk (hdparm -S, kept across reboots), off by default, set on the Disks page; worth it only after 'Idle disks stay idle' #p3 #disks
 - [ ] *Disk temperatures over time** load the drivetemp module so SATA temperatures come from hwmon in the 5 s vitals (no smartctl, a sleeping disk is not woken), and show each disk's temperature with a half-hour sparkline on the overview #p3 #disks
 - [ ] **Found by name from Windows** Windows Explorer's network view does not list the box: Samba runs without nmbd and there is no WS-Discovery; add wsdd (or wsdd2) to the package so the box shows up under Network, and say in the Shares page which name Windows uses. Found when Déjà Dup on Linux failed on the bare smb://mk-nas name (the pages now show <name>.local) #p3 #shares
+- [ ] *Security: signing is blind to what CI built** sign-release.sh signs whatever SHA256SUMS the release has; the drive image hash comes from mk-drive's unsigned SHA256SUMS: commit the drive tgz hash with the pin, rebuild or compare the deb locally, write release.json and SHA256SUMS in the signing step #p1 #security
+- [ ] *Security: drive image pulled by tag, unchecked** compose pulls ghcr.io/mkornas/mk-drive:X.Y.Z when missing (hand installs, pruned images, iso.sh docker pull): pull_policy never, verify the image id from the signed release before up, iso.sh uses the verified tgz #p1 #security
+- [ ] *Security: first boot on the LAN** port 8810 on all interfaces before an admin exists: a one-time setup token printed on the console / by mk-nas #p1 #security
+- [ ] *Security: installer defaults** postinst adds the first user to docker (root without a password) on every upgrade; the stick allows ssh password login: drop the docker group, keys-only or document #p2 #security
+- [ ] *Security: NFS open to every private network** the default exports rw to 10/8, 172.16/12, 192.168/16 with no auth: no default clients, ask for them #p2 #security
+- [ ] *Security: CI and packaging hardening** persist-credentials false, actions pinned by SHA, permissions on test.yml, vm.yml dispatch only from main and an isolated runner, chmod -R go-w in deb.sh, gpgv the Ubuntu SHA256SUMS, cloudflared by digest, cap_drop/no-new-privileges, re-validate DB rows in replicate, upgrade.sh UNSIGNED hint removed #p2 #security
 
 ## Later
 
