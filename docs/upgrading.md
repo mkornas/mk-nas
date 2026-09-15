@@ -47,6 +47,19 @@ was built for. A drive newer than its agent shows a banner on every page
 asking for the upgrade above, and the Storage pages may misbehave until
 then. An agent newer than its drive is fine: verbs are only ever added.
 
+## What 0.6.2 changes on a box
+
+- Pins mk-drive 0.5.0:
+  - **Settings → Sign-in**: an admin sets single sign-on with their own
+    OpenID Connect provider (Pocket ID, Authentik, Keycloak, …) on the page
+    instead of `DRIVE_OIDC_*` in `/opt/mk-drive/.env`. Those lines, when
+    present, still win and show read-only. The client secret lives in the
+    drive's database, which the settings backup includes.
+  - The Shares page, the share dialog and the account page show
+    `smb://<box>.local/<share>` instead of the bare hostname, which only
+    resolved where the network's DNS knew it.
+- Nothing changes in the agent.
+
 ## What 0.6.1 changes on a box
 
 - A disk that cannot run SMART self-tests (an NVMe drive without the
