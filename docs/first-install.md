@@ -255,8 +255,12 @@ it has a token:
 2. Still in the dashboard, give the tunnel a **public hostname**, for
    example `drive.example.com`, with service **HTTP** → `localhost:8810`.
    Only that. Never add SMB (445), NFS or ssh to a tunnel.
-3. On the box (`ssh <user>@<name>.local`), put the token in the stack's
-   settings and restart the drive:
+3. In the drive, **Storage → Network → Reach the drive from outside**: paste
+   the token and save. The page shows the tunnel connecting, the public
+   hostnames Cloudflare gives it, and the last error if it cannot connect.
+   Do this from home: the page refuses to change the tunnel when it is
+   opened through that tunnel. Or, on the box (`ssh <user>@<name>.local`),
+   put the token in the stack's settings and restart the drive:
 
    ```
    sudo nano /opt/mk-drive/.env        # the line: CLOUDFLARE_TUNNEL_TOKEN=<token>
@@ -273,8 +277,8 @@ it has a token:
 To switch it off, empty or delete that line and restart the drive again;
 the tunnel container goes away. The token survives upgrades (the `.env`
 is yours; the package never rewrites it), only root can read the file, and
-the settings backup keeps a copy. Setting the token from the drive's
-Network page instead of over ssh is a card on the board.
+the settings backup keeps a copy. **Turn off** on the Network page does the
+same as emptying the line.
 
 Nothing to change in the drive's settings: the password form is on by
 default (leave `DRIVE_PASSWORD_LOGIN` as it is — `lan` would refuse sign-ins

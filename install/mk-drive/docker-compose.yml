@@ -48,6 +48,9 @@ services:
     command: tunnel run
     environment:
       TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+      # readiness and metrics on the box only: by default cloudflared listens on every address, the LAN included;
+      # the agent reads http://127.0.0.1:20241/ready for the Network page
+      TUNNEL_METRICS: 127.0.0.1:20241
     deploy:
       resources:
         limits:

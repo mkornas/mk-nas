@@ -70,6 +70,14 @@ export const config: Config = {
   releaseSigners: process.env.MK_NAS_RELEASE_SIGNERS || '/opt/mk-nas/install/release-signers',
 };
 
+/** The drive stack's tunnel: its .env line, the script that starts or stops the container, cloudflared's readiness on localhost. */
+export const tunnelConfig = (c: Config) => ({
+  envFile: c.driveEnv,
+  stackUp: '/opt/mk-nas/install/stack-up.sh',
+  container: 'mk-drive-tunnel',
+  readyUrl: 'http://127.0.0.1:20241/ready',
+});
+
 /** Where releases come from and go to, as the agent, the tick and the install runner see it. */
 export const updateConfig = (c: Config) => ({
   repo: c.updatesRepo,

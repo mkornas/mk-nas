@@ -38,6 +38,9 @@ export type Verb =
   | 'system.reboot'
   | 'system.shutdown'
   | 'update'
+  | 'tunnel'
+  | 'tunnel.set'
+  | 'tunnel.remove'
   | 'update.check'
   | 'update.install'
   | 'network'
@@ -480,6 +483,26 @@ export interface Update {
   run: UpdateRun | null;
 }
 
+/** The Cloudflare Tunnel to the drive, as the box sees it now. The token itself is never sent. */
+export interface Tunnel {
+  /** A token is set in the drive stack's .env. */
+  configured: boolean;
+  /** From the token: the tunnel's id in Cloudflare's dashboard. */
+  tunnelId: string | null;
+  /** off: no token; starting: just started; connected: at least one connection to Cloudflare; disconnected: running without one; failing: the container is not running. */
+  state: 'off' | 'starting' | 'connected' | 'disconnected' | 'failing';
+  /** Docker's word for the container (running, restarting, exited), null when there is none. */
+  container: string | null;
+  since: string | null;
+  restarts: number;
+  /** Live connections to Cloudflare's edge (cloudflared keeps up to four). */
+  connections: number | null;
+  /** The public hostnames Cloudflare configured for the tunnel, from its newest configuration. */
+  hostnames: string[];
+  lastConnectedAt: string | null;
+  lastError: string | null;
+}
+
 export interface NetInterface {
   name: string;
   mac: string | null;
@@ -598,6 +621,11 @@ export interface Verbs {
   'system.reboot': { args: { confirm: string }; result: PowerScheduled };
   /** `confirm` = the box's hostname, typed. Answers, then powers off a few seconds later; only the power button brings it back. */
   'system.shutdown': { args: { confirm: string }; result: PowerScheduled };
+  tunnel: { args: Record<string, never>; result: Tunnel };
+  /** Writes the token into the drive stack's .env and starts the tunnel container; the drive itself keeps running. */
+  'tunnel.set': { args: { token: string }; result: Tunnel };
+  /** Removes the token and the tunnel container. */
+  'tunnel.remove': { args: Record<string, never>; result: Tunnel };
   /** What is installed, the newest release at the last check (the timer checks daily), and the newest install run. */
   update: { args: Record<string, never>; result: Update };
   /** Asks GitHub now. */

@@ -27,6 +27,7 @@ import { byIdMap, getSmart, listDisks, LSBLK_ARGV, parseLsblk, pickId, smartctlV
 import { readBackup, restoreBackup, runBackup, setBackup, type BackupConfig } from './backup.ts';
 import { BadArgs, datasetName, diskId, only, optional, poolName } from './names.ts';
 import { readPower, schedulePower } from './power.ts';
+import { readTunnel, removeTunnel, setTunnel, type TunnelConfig } from './tunnel.ts';
 import { checkForUpdate, installable, readUpdate, type Fetch, type UpdateConfig } from './updates.ts';
 import { confirmNetwork, readNetwork, revertIfExpired, setNetwork, type NetConfig } from './network.ts';
 import { must, type Runner } from './run.ts';
@@ -73,9 +74,16 @@ export interface Deps {
   rebootRequired?: string;
   /** Absent in tests that do not care. */
   updates?: UpdateConfig;
+  /** Absent in tests that do not care. */
+  tunnel?: TunnelConfig;
   /** GitHub, for the update check; a fake in tests. */
   fetch?: Fetch;
 }
+
+const tunnelOf = (deps: Deps): TunnelConfig => {
+  if (!deps.tunnel) throw new Error('the tunnel is not configured');
+  return deps.tunnel;
+};
 
 const updatesOf = (deps: Deps): UpdateConfig => {
   if (!deps.updates) throw new Error('updates are not configured');
@@ -213,6 +221,18 @@ export const verbs: { [V in Verb]: Handler<V> } = {
   async 'system.shutdown'(args, deps) {
     const a = only(args, ['confirm']);
     return schedulePower(deps.run, 'shutdown', a.confirm);
+  },
+  async tunnel(args, deps) {
+    only(args, []);
+    return readTunnel(deps.run, deps.fetch ?? fetch, tunnelOf(deps));
+  },
+  async 'tunnel.set'(args, deps) {
+    const a = only(args, ['token']);
+    return setTunnel(deps.run, deps.fetch ?? fetch, tunnelOf(deps), a.token);
+  },
+  async 'tunnel.remove'(args, deps) {
+    only(args, []);
+    return removeTunnel(deps.run, deps.fetch ?? fetch, tunnelOf(deps));
   },
   async update(args, deps) {
     only(args, []);
