@@ -9,7 +9,7 @@ One card per line, ranked top-down inside each column. `#p0`..`#p3` = priority, 
 
 ## Now
 
-- [ ] **Go public** mk-nas and mk-drive as public repos: current files cleaned of the author's network, hardware and accounts; AGPL-3.0; full history archived to private *-archive repos, main squashed to one commit, old tags and releases dropped, GHCR image public, first public release. Blocks Updates from the box (a public release to check) #p1 #public
+- [ ] **Go public** mk-nas and mk-drive as public repos: current files cleaned of the author's network, hardware and accounts; AGPL-3.0; full history archived to private *-archive repos, main squashed to one commit, old tags and releases dropped, GHCR image public, first public release. Blocks Updates from the box (a public release to check) #p1 #public [[go-public]]
 
 ## Next
 
@@ -20,6 +20,8 @@ One card per line, ranked top-down inside each column. `#p0`..`#p3` = priority, 
 - [ ] **Lean install** the stick installs ubuntu-server (758 packages, 2.7 GB, 32 running services, 730 MB RAM idle in the VM) with a 4 GB /swap.img; try the autoinstall source ubuntu-server-minimal and a 1 GB swap file, and have upgrade.sh remove drive images older than the pinned one (the VM held 2.6 GB of them after a day of upgrades) — measure in the VM before the next stick #p2 #install
 - [ ] **Cloudflare Tunnel from the UI** Storage → Network gets a 'Reach the drive from outside' card: paste the tunnel token, see the hostname it serves, whether it is connected and when it last was. cloudflared runs as a second container in the /opt/mk-drive stack, started only when a token is set (the agent never installs packages from a third-party repo); an agent verb stores the token in a root-only file, the drive only ever shows it masked, the settings backup includes it. Setting, changing or removing the tunnel is refused through the tunnel itself (it would cut the connection in use) — from home only. Hostnames stay managed in Cloudflare's dashboard. Until then: ssh, docs/first-install.md 'Reach the drive from outside' #p2 #remote [[cloudflare-tunnel-from-the-ui]]
 - [ ] **HTTPS on the local network** so a phone can use the box's own name (nas.home.arpa or a name in your own domain) at home: iOS allows plain http only to IPs and .local names. Options to weigh: a real certificate for a name in a domain you own via Let's Encrypt DNS-01 (Caddy with the DNS provider's token; split DNS points the name at the box), or the drive's port behind Caddy with its internal CA (the phone must trust that root). Off until configured, in the drive's stack like the tunnel; http on 8810 stays for the LAN #p3 #network
+- [ ] *CLA for outside contributions** AGPL-3.0 with a commercial license needs the right to relicense contributions: a short CLA (or CLA Assistant) and a CONTRIBUTING.md in mk-nas and mk-drive before accepting the first outside PR #p2 #public
+- [ ] *Self-hosted runner on a public repo** vm.yml runs on a self-hosted KVM runner; before registering one, require approval for all fork PR workflows and restrict the runner to the vm workflow (a fork PR can otherwise run code on it) #p2 #ci
 
 ## Later
 
