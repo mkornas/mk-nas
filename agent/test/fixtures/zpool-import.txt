@@ -1,0 +1,23 @@
+   pool: old
+     id: 12345678901234567890
+  state: ONLINE
+status: Some supported features are not enabled on the pool.
+	(Note that they may be intentionally disabled if the
+	'compatibility' property is set.)
+ action: The pool can be imported using its name or numeric identifier, though
+	some features will not be available without an explicit 'zpool upgrade'.
+ config:
+
+	old                    ONLINE
+	  mirror-0             ONLINE
+	    ata-OLD_A          ONLINE
+	    ata-OLD_B          ONLINE
+
+   pool: usbbackup
+     id: 999
+  state: ONLINE
+ action: The pool can be imported using its name or numeric identifier.
+ config:
+
+	usbbackup              ONLINE
+	  usb-WD_Elements_XYZ  ONLINE

@@ -1,0 +1,81 @@
+/** Everything from the environment, read once. */
+import { readFileSync } from 'node:fs';
+
+const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string };
+
+export interface Config {
+  socket: string;
+  /** The group that may talk to the socket; chown skipped when it does not exist or we are not root. */
+  group: string;
+  /** A file path, or '-' for stderr. */
+  audit: string;
+  version: string;
+  /** Per-command timeout in ms. */
+  timeout: number;
+  /** How often zpool events is read, in ms. */
+  eventsEvery: number;
+  /** How often the vitals are sampled, in ms. */
+  vitalsEvery: number;
+  /** The SQLite file for policies (later shares, jobs, SMB users). */
+  db: string;
+  /** Where datasets made "as a location" are mounted; the mk-drive container sees it as /locations. */
+  locationsDir: string;
+  /** Shares: the files the agent writes whole, the group SMB users join, who owns files written over the network. */
+  smbConf: string;
+  exportsFile: string;
+  smbGroup: string;
+  ownerUid: number;
+  ownerGid: number;
+  /** Replication: the NAS's ssh key and its own known_hosts. */
+  sshKey: string;
+  knownHosts: string;
+  /** Network: the one netplan file the agent owns, and where a pending change keeps what was there before. */
+  netplanFile: string;
+  netplanPending: string;
+  /** The drive's .env and database, for the settings backup. */
+  driveEnv: string;
+  driveDb: string;
+}
+
+export const config: Config = {
+  socket: process.env.MK_NAS_SOCKET || '/run/mk-nas.sock',
+  group: process.env.MK_NAS_GROUP || 'mk-nas',
+  audit: process.env.MK_NAS_AUDIT || '/var/log/mk-nas/audit.jsonl',
+  version: pkg.version,
+  timeout: Number(process.env.MK_NAS_TIMEOUT) || 60_000,
+  eventsEvery: Number(process.env.MK_NAS_EVENTS_EVERY) || 5_000,
+  vitalsEvery: Number(process.env.MK_NAS_VITALS_EVERY) || 5_000,
+  db: process.env.MK_NAS_DB || '/var/lib/mk-nas/mk-nas.db',
+  locationsDir: process.env.MK_NAS_LOCATIONS || '/srv/locations',
+  smbConf: process.env.MK_NAS_SMB_CONF || '/etc/samba/smb.conf',
+  exportsFile: process.env.MK_NAS_EXPORTS || '/etc/exports.d/mk-nas.exports',
+  smbGroup: process.env.MK_NAS_SMB_GROUP || 'mk-nas-smb',
+  // the unit reads the stack's .env too, so DRIVE_UID/DRIVE_GID there own locations and files written over the network
+  ownerUid: Number(process.env.MK_NAS_OWNER_UID) || Number(process.env.DRIVE_UID) || 1000,
+  ownerGid: Number(process.env.MK_NAS_OWNER_GID) || Number(process.env.DRIVE_GID) || 1000,
+  sshKey: process.env.MK_NAS_SSH_KEY || '/var/lib/mk-nas/ssh/id_ed25519',
+  knownHosts: process.env.MK_NAS_KNOWN_HOSTS || '/var/lib/mk-nas/ssh/known_hosts',
+  netplanFile: process.env.MK_NAS_NETPLAN || '/etc/netplan/90-mk-nas.yaml',
+  netplanPending: process.env.MK_NAS_NETPLAN_PENDING || '/var/lib/mk-nas/netplan-pending.json',
+  driveEnv: process.env.MK_NAS_DRIVE_ENV || '/opt/mk-drive/.env',
+  driveDb: process.env.MK_NAS_DRIVE_DB || '/opt/mk-drive/data/mk-drive.db',
+};
+
+/** What the settings backup copies, minus the runner that finishes a restore. */
+export const backupConfig = (c: Config) => ({
+  db: c.db,
+  sshKey: c.sshKey,
+  knownHosts: c.knownHosts,
+  netplanFile: c.netplanFile,
+  driveEnv: c.driveEnv,
+  driveDb: c.driveDb,
+});
+
+/** The network files as the agent and the tick see them. */
+export const netConfig = (c: Config) => ({
+  netplanFile: c.netplanFile,
+  pendingFile: c.netplanPending,
+  hostsFile: '/etc/hosts',
+  resolvConf: '/run/systemd/resolve/resolv.conf',
+  sysNet: '/sys/class/net',
+});

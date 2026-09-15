@@ -1,0 +1,25 @@
+name: test
+on:
+  push:
+  pull_request:
+jobs:
+  agent:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: sudo apt-get update && sudo apt-get install -y zfsutils-linux smartmontools
+      - run: npm ci
+        working-directory: agent
+      - run: npm run typecheck
+        working-directory: agent
+      # As root so the integration test can create a pool on file vdevs in /var/tmp.
+      - run: sudo -E "$(command -v node)" --test 'test/**/*.test.ts'
+        working-directory: agent
+      - run: sudo apt-get install -y fakeroot && make deb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mk-nas-deb
+          path: install/out/mk-nas_*_amd64.deb

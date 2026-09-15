@@ -1,0 +1,12 @@
+{
+  "blockdevices": [
+    {"name":"loop0","path":"/dev/loop0","size":4096,"model":null,"serial":null,"rota":false,"type":"loop","tran":null,"mountpoint":"/snap/x","fstype":"squashfs","label":null},
+    {"name":"sda","path":"/dev/sda","size":2000398934016,"model":"WDC WD20EFRX-68EUZN0","serial":"WD-AAAAAAAAAAAA","rota":true,"type":"disk","tran":"sata","mountpoint":null,"fstype":null,"label":null,
+     "children":[{"name":"sda1","path":"/dev/sda1","size":2000389996544,"model":null,"serial":null,"rota":true,"type":"part","tran":null,"mountpoint":null,"fstype":"zfs_member","label":"tank"}]},
+    {"name":"sdb","path":"/dev/sdb","size":2000398934016,"model":"WDC WD20EFRX-68EUZN0","serial":"WD-BBBBBBBBBBBB","rota":true,"type":"disk","tran":"sata","mountpoint":null,"fstype":null,"label":null},
+    {"name":"nvme0n1","path":"/dev/nvme0n1","size":256060514304,"model":"Samsung SSD 970 EVO 250GB","serial":"S4EWNX0N000000","rota":false,"type":"disk","tran":"nvme","mountpoint":null,"fstype":null,"label":null,
+     "children":[{"name":"nvme0n1p1","path":"/dev/nvme0n1p1","size":1073741824,"model":null,"serial":null,"rota":false,"type":"part","tran":null,"mountpoint":"/boot/efi","fstype":"vfat","label":null},
+                 {"name":"nvme0n1p2","path":"/dev/nvme0n1p2","size":254986772480,"model":null,"serial":null,"rota":false,"type":"part","tran":null,"mountpoint":"/","fstype":"ext4","label":null}]},
+    {"name":"zd0","path":"/dev/zd0","size":10737418240,"model":null,"serial":null,"rota":false,"type":"disk","tran":null,"mountpoint":null,"fstype":null,"label":null}
+  ]
+}

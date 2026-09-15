@@ -1,0 +1,60 @@
+# A tag vX.Y.Z → the agent's tests (the file-vdev pool test as root) → the .deb → a GitHub Release with the
+# package, its checksum, and release.json naming the mk-drive version this release pins. install/upgrade.sh
+# on a laptop reads that release and puts it on a box.
+name: release
+on:
+  push:
+    tags: ['v*.*.*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: The tag matches the agent's version
+        run: |
+          tag=${GITHUB_REF_NAME#v}
+          have=$(node -p "require('./agent/package.json').version")
+          [ "$tag" = "$have" ] || { echo "::error::tag v$tag but agent/package.json says $have — use install/release.sh"; exit 1; }
+          drive=$(tr -d '[:space:]' < install/mk-drive/version)
+          contract=$(grep -o 'export const CONTRACT = [0-9]*' agent/src/verbs.ts | grep -o '[0-9]*$')
+          { echo "VERSION=$tag"; echo "DRIVE=$drive"; echo "CONTRACT=$contract"; } >> "$GITHUB_ENV"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: sudo apt-get update && sudo apt-get install -y zfsutils-linux smartmontools fakeroot
+      - run: npm ci
+        working-directory: agent
+      - run: npm run typecheck
+        working-directory: agent
+      - run: sudo -E "$(command -v node)" --test 'test/**/*.test.ts'
+        working-directory: agent
+      - run: make deb
+      - name: Assets and notes
+        run: |
+          mkdir -p out
+          cp install/out/mk-nas_${VERSION}_amd64.deb out/
+          printf '{"agent":"%s","drive":"%s","contract":%s}\n' "$VERSION" "$DRIVE" "$CONTRACT" > out/release.json
+          (cd out && sha256sum mk-nas_${VERSION}_amd64.deb release.json > SHA256SUMS)
+          prev=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)
+          {
+            echo "mk-nasd $VERSION, verb contract $CONTRACT. Pins **mk-drive $DRIVE** (\`ghcr.io/mkornas/mk-drive:$DRIVE\`)."
+            echo
+            echo "Put it on a box from a laptop with this repo and \`gh\` signed in:"
+            echo
+            echo '```'
+            echo "install/upgrade.sh <user>@<box>.local $VERSION"
+            echo '```'
+            echo
+            echo "It takes a settings backup, installs the package, brings the pinned drive up and checks both answer. By hand: \`sudo apt install ./mk-nas_${VERSION}_amd64.deb\` (docs/upgrading.md)."
+            echo
+            echo "## Changes${prev:+ since $prev}"
+            git log --no-merges --format='- %s' ${prev:+$prev..}"$GITHUB_REF_NAME" -- agent shared install .github | head -200
+          } > out/notes.md
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" out/mk-nas_*_amd64.deb out/release.json out/SHA256SUMS --title "mk-nas $VERSION" --notes-file out/notes.md --verify-tag

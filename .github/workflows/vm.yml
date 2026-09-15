@@ -1,0 +1,52 @@
+# The nightly proof that the stick still works: build the package and the
+# unattended ISO, install it into QEMU, boot the result, and ask the drive
+# and the agent one thing each. Needs a self-hosted runner with KVM and the
+# tools vm.sh and iso.sh want: qemu-system-x86, ovmf, xorriso, sshpass, curl,
+# node 24 — and a writable install/cache (the Ubuntu ISO is fetched once).
+name: vm
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+jobs:
+  smoke:
+    runs-on: [self-hosted, linux, kvm]
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - run: for t in qemu-system-x86_64 xorriso sshpass curl node fakeroot dpkg-deb; do command -v $t >/dev/null || { echo "missing $t"; exit 1; }; done
+      - run: npm ci
+        working-directory: agent
+      - run: make deb
+      - run: install/iso.sh --unattended install/autoinstall/user-data.vm --out install/out/mk-nas-vm.iso
+      # the unattended install powers the VM off when it is done; qemu returns then
+      - run: HEADLESS=1 timeout 45m install/vm.sh install
+      - name: boot and wait for the drive
+        run: |
+          HEADLESS=1 install/vm.sh boot > install/out/vm/qemu.log 2>&1 &
+          echo $! > install/out/vm/qemu.pid
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:8810/api/meta > install/out/vm/meta.json 2>/dev/null; then cat install/out/vm/meta.json; exit 0; fi
+            sleep 5
+          done
+          echo "the drive did not answer on 8810 within 7.5 minutes"; exit 1
+      - name: one call to the agent
+        run: |
+          ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -p 2222"
+          # nasadmin / mk-nas is the VM seed's identity (install/autoinstall/user-data.vm); the agent's socket takes root or the mk-nas group
+          sshpass -p mk-nas ssh $ssh_opts nasadmin@127.0.0.1 'echo mk-nas | sudo -S mk-nas version && echo mk-nas | sudo -S mk-nas disks && echo mk-nas | sudo -S mk-nas health'
+      - name: the drive knows the agent
+        run: grep -q '"nas"' install/out/vm/meta.json
+      - if: always()
+        run: |
+          [ -f install/out/vm/qemu.pid ] && kill "$(cat install/out/vm/qemu.pid)" 2>/dev/null || true
+          sleep 2
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vm-smoke-logs
+          path: |
+            install/out/vm/serial.log
+            install/out/vm/qemu.log
+            install/out/vm/meta.json
+          if-no-files-found: ignore

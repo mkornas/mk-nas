@@ -1,0 +1,47 @@
+#cloud-config
+# The mk-nas stick: Ubuntu Server 24.04 autoinstall. It asks two things —
+# who you are (name, hostname, password; the identity screen) and which
+# disk is the OS disk (the storage screen: pick it, "use an entire disk").
+# The data disks are never touched; you make the pool from the drive.
+# Everything else is decided here. The mk-drive admin account is created
+# on the first visit of http://<nas>:8810.
+autoinstall:
+  version: 1
+  interactive-sections:
+    - identity
+    - storage
+  locale: en_US.UTF-8
+  keyboard:
+    layout: us
+  source:
+    id: ubuntu-server
+    search_drivers: false
+  network:
+    version: 2
+    ethernets:
+      all-en:
+        match:
+          name: "en*"
+        dhcp4: true
+  ssh:
+    install-server: true
+    allow-pw: true
+  packages:
+    - zfsutils-linux
+    - smartmontools
+    - samba
+    - nfs-kernel-server
+    - avahi-daemon
+    - docker.io
+    - docker-compose-v2
+    - ca-certificates
+    - curl
+    - xz-utils
+  updates: security
+  timezone: geoip
+  late-commands:
+    - mkdir -p /target/opt/mk-nas-src
+    - cp -a /cdrom/mk-nas/. /target/opt/mk-nas-src/
+    - sh -c 'mv /target/opt/mk-nas-src/install/out/mk-nas_*_amd64.deb /target/opt/mk-nas-src/install/out/mk-nas.deb'
+    - curtin in-target --target=/target -- bash /opt/mk-nas-src/install/install.sh /opt/mk-nas-src/install/out/mk-nas.deb
+  shutdown: reboot

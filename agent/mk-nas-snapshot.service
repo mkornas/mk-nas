@@ -1,0 +1,9 @@
+[Unit]
+Description=mk-nas snapshot policies and scrub schedules: take what is due, prune what is beyond the counts, scrub what is due
+After=zfs.target mk-nasd.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/mk-nas/node/bin/node /opt/mk-nas/agent/src/tick.ts
+Environment=NODE_NO_WARNINGS=1
+Environment=MK_NAS_AUDIT=/var/log/mk-nas/audit.jsonl

@@ -1,0 +1,10 @@
+# The agent's audit: one JSON line per call. Appended per line (no open handle), so a plain rename is safe.
+/var/log/mk-nas/audit.jsonl {
+    weekly
+    rotate 12
+    missingok
+    notifempty
+    compress
+    delaycompress
+    create 0600 root root
+}

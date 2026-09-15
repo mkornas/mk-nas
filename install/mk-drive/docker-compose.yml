@@ -1,0 +1,54 @@
+# mk-drive on a mk-nas host. Installed to /opt/mk-drive by install/install.sh;
+# values come from /opt/mk-drive/.env. The agent's socket is mounted in and
+# the container joins the mk-nas group, which is all the privilege it has.
+services:
+  mk-drive:
+    # the drive version this mk-nas release was made with (install/mk-drive/version, stamped by deb.sh);
+    # DRIVE_IMAGE in .env overrides it — leave it unset unless you mean to run something else
+    image: ${DRIVE_IMAGE:-ghcr.io/mkornas/mk-drive:@DRIVE_VERSION@}
+    container_name: mk-drive
+    restart: unless-stopped
+    # who the drive runs as; the agent hands new locations to the same uid/gid (set both in .env)
+    user: "${DRIVE_UID:-1000}:${DRIVE_GID:-1000}"
+    ports:
+      - "8810:8810"
+    group_add:
+      - "${MK_NAS_GID:?run install.sh}"
+    environment:
+      TZ: ${TZ:-UTC}
+      DRIVE_NAS_SOCKET: /run/mk-nas.sock
+      DRIVE_PASSWORD_LOGIN: ${DRIVE_PASSWORD_LOGIN:-on}
+      DRIVE_OIDC_ISSUER: ${DRIVE_OIDC_ISSUER:-}
+      DRIVE_OIDC_CLIENT_ID: ${DRIVE_OIDC_CLIENT_ID:-}
+      DRIVE_OIDC_CLIENT_SECRET: ${DRIVE_OIDC_CLIENT_SECRET:-}
+      DRIVE_OIDC_NAME: ${DRIVE_OIDC_NAME:-Single sign-on}
+    volumes:
+      # rslave: a dataset the agent mounts under /srv/locations later shows up inside the container too
+      - type: bind
+        source: /srv/locations
+        target: /locations
+        bind:
+          propagation: rslave
+      - /opt/mk-drive/data:/data
+      - /run/mk-nas.sock:/run/mk-nas.sock
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  # The way in from outside: a Cloudflare Tunnel to the drive, and nothing else. Off until CLOUDFLARE_TUNNEL_TOKEN is
+  # set in .env (stack-up.sh turns the profile on); in Cloudflare's dashboard the tunnel's public hostname points at
+  # http://localhost:8810. SMB, NFS and ssh never go through it.
+  cloudflared:
+    image: cloudflare/cloudflared:2026.9.1
+    container_name: mk-drive-tunnel
+    profiles: [tunnel]
+    restart: unless-stopped
+    network_mode: host
+    command: tunnel run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    deploy:
+      resources:
+        limits:
+          memory: 128m

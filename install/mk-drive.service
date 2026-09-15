@@ -1,0 +1,18 @@
+[Unit]
+Description=mk-drive (the NAS console) as a compose stack
+Requires=docker.service mk-nasd.service
+After=docker.service mk-nasd.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/mk-drive
+ExecStartPre=/opt/mk-nas/install/load-image.sh
+# the drive, and the Cloudflare Tunnel when .env has a token (stack-up.sh)
+ExecStart=/opt/mk-nas/install/stack-up.sh
+ExecStop=/usr/bin/docker compose --profile tunnel down
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target

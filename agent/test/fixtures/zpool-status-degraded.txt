@@ -1,0 +1,19 @@
+  pool: tank
+ state: DEGRADED
+status: One or more devices could not be used because the label is missing or
+	invalid.  Sufficient replicas exist for the pool to continue
+	functioning in a degraded state.
+action: Replace the device using 'zpool replace'.
+   see: https://openzfs.github.io/openzfs-docs/msg/ZFS-8000-4J
+  scan: scrub in progress since Fri Sep 12 10:00:00 2026
+	1.20G / 3.40G scanned at 120M/s, 800M / 3.40G issued at 80M/s
+	0B repaired, 23.53% done, 00:00:33 to go
+config:
+
+	NAME                                          STATE     READ WRITE CKSUM
+	tank                                          DEGRADED     0     0     0
+	  mirror-0                                    DEGRADED     0     0     0
+	    ata-WDC_WD20EFRX-68EUZN0_WD-AAAAAAAAAAAA  ONLINE       0     0     0
+	    1234567890123456789                       UNAVAIL      0     0     0  was /dev/disk/by-id/ata-WDC_WD20EFRX-68EUZN0_WD-BBBBBBBBBBBB-part1
+
+errors: No known data errors

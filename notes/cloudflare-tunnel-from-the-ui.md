@@ -1,0 +1,3 @@
+# Cloudflare Tunnel from the UI
+
+- 2026-09-14 16:42 — 0.4.3: the container part is done — cloudflared 2026.9.1 is a profile-gated service in the drive's stack, started by stack-up.sh when /opt/mk-drive/.env has CLOUDFLARE_TUNNEL_TOKEN (tested in the VM: no token → no container, token → mk-drive-tunnel runs, cleared → removed; .env now 0600). What this card still needs: the agent verb that writes that line and restarts mk-drive, the Network page card (masked token, connected / last connected from the container's state or cloudflared's metrics), and refusing changes that arrive through the tunnel.

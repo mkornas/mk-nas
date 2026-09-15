@@ -1,0 +1,4 @@
+# Phase 1 — see
+
+- 2026-09-12 17:07 — 2026-09-12: agent side built — agent/ (config, run, names, audit, zfs, disks, verbs, server, index, mk-nasd.service), shared/types.ts contract, 27 fixture/protocol tests passing, file-vdev pool test skips without root+zfs and runs in .github/workflows/test.yml. Smoke-tested on the dev box: version, disks (by-id, use=os) answer; pools reports 'unavailable' cleanly without zfs. Remaining on this card: the mk-drive side (DRIVE_NAS_SOCKET, /api/nas proxy, Storage pages).
+- 2026-09-12 18:07 — Agent: ten read-only verbs over /run/mk-nas.sock, argv-only, audited, 27 tests + a file-vdev pool test in CI (commit c258ed7). mk-drive: DRIVE_NAS_SOCKET, admin-only /api/nas proxy, Storage → Health, Disks, Pools, Datasets, Snapshots; verified live on the dev box (mk-drive commit be20494). Nothing from this card left for later. — main @ 4a0007d board: phase 1 started, hardware notes

@@ -1,0 +1,4 @@
+# Phase 6 — keep
+
+- 2026-09-12 21:50 — 2026-09-12: install/deb.sh builds mk-nas_<version>_amd64.deb (agent, shared, Node in /opt/mk-nas/node, units in /lib/systemd/system, /usr/bin/mk-nas, postinst = what install.sh did); install.sh is now a thin build-and-apt-install; the stick carries the .deb and installs it in the target; CI uploads the .deb; the agent reports a contract number and mk-drive shows a banner when it needs a newer one; docs/upgrading.md.
+- 2026-09-12 21:52 — Verified in the VM: apt install ./mk-nas_0.2.0_amd64.deb over the pre-package install — agent 0.2.0 up on the package's Node, units from /lib, old /etc copies removed, pool and shares intact. The rebuilt test ISO carries the .deb and installs it in the target (that path is verified on the ISO contents, not by a reinstall). mk-drive: nasOutdated in meta + banner, tested (f8e2869, 6317db3). — main @ 11f417c Phase 6: keep — the agent as one .deb, an upgrade path, a contract the drive checks

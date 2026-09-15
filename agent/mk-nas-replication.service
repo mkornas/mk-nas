@@ -1,0 +1,10 @@
+[Unit]
+Description=mk-nas replication: run every scheduled job that is due
+After=network-online.target zfs.target mk-nasd.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/mk-nas/node/bin/node /opt/mk-nas/agent/src/replicate.ts --due
+Environment=NODE_NO_WARNINGS=1
+Environment=MK_NAS_AUDIT=/var/log/mk-nas/audit.jsonl

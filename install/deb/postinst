@@ -1,0 +1,75 @@
+#!/bin/sh
+# mk-nas: after the files are in place. Idempotent; runs on install and on every upgrade.
+set -e
+
+case "$1" in
+  configure)
+    getent group mk-nas >/dev/null || groupadd --system mk-nas
+    mkdir -p /var/log/mk-nas /var/lib/mk-nas/ssh /etc/exports.d /srv/locations /opt/mk-drive/data
+    chmod 0750 /var/log/mk-nas /var/lib/mk-nas
+    chmod 0700 /var/lib/mk-nas/ssh
+    # the container's user: DRIVE_UID/DRIVE_GID from the stack's .env once it exists, 1000 before that
+    drive_uid=$( { grep -s '^DRIVE_UID=' /opt/mk-drive/.env || echo DRIVE_UID=1000; } | cut -d= -f2)
+    drive_gid=$( { grep -s '^DRIVE_GID=' /opt/mk-drive/.env || echo DRIVE_GID=1000; } | cut -d= -f2)
+    chown "${drive_uid:-1000}:${drive_gid:-1000}" /opt/mk-drive/data 2>/dev/null || true
+
+    # Samba and NFS come up when the first share of their kind is made; until then they stay quiet
+    if [ -z "$2" ]; then
+      systemctl disable --now smbd nmbd nfs-server >/dev/null 2>&1 || true
+    fi
+
+    # the first person on the box (uid 1000, made by the installer) may talk to docker without sudo
+    first_user=$(getent passwd 1000 | cut -d: -f1 || true)
+    [ -n "$first_user" ] && usermod -aG docker "$first_user" || true
+
+    # the mk-drive stack: the compose file is ours to replace (it pins the drive version this release was made with),
+    # the .env is the operator's
+    stack_changed=0
+    cmp -s /opt/mk-nas/install/mk-drive/docker-compose.yml /opt/mk-drive/docker-compose.yml || stack_changed=1
+    cp /opt/mk-nas/install/mk-drive/docker-compose.yml /opt/mk-drive/docker-compose.yml
+    # before 0.4.0 the .env named :latest, which follows every push to mk-drive's main; that line gives way to the pin
+    if [ -f /opt/mk-drive/.env ] && grep -qx 'DRIVE_IMAGE=ghcr.io/mkornas/mk-drive:latest' /opt/mk-drive/.env; then
+      sed -i 's|^DRIVE_IMAGE=ghcr.io/mkornas/mk-drive:latest$|# DRIVE_IMAGE=ghcr.io/mkornas/mk-drive:latest  (replaced by the version mk-nas pins; see docs/upgrading.md)|' /opt/mk-drive/.env
+      stack_changed=1
+    fi
+    if [ ! -f /opt/mk-drive/.env ]; then
+      tz=$(readlink /etc/localtime 2>/dev/null | sed 's|.*/zoneinfo/||' || true)
+      cat > /opt/mk-drive/.env <<ENV
+# mk-drive on this NAS. Edit, then: systemctl restart mk-drive
+TZ=${tz:-UTC}
+# the drive image is the version this mk-nas release pins; set DRIVE_IMAGE only to run something else
+# DRIVE_IMAGE=ghcr.io/mkornas/mk-drive:<version>
+MK_NAS_GID=$(getent group mk-nas | cut -d: -f3)
+# who the container runs as; new locations and files written over the network belong to it (restart mk-nasd too after a change)
+DRIVE_UID=1000
+DRIVE_GID=1000
+# reach the drive from outside: a Cloudflare Tunnel's token (dashboard → Networks → Tunnels → the tunnel → Docker);
+# the tunnel starts with the next systemctl restart mk-drive, and goes away when this line is empty again
+# CLOUDFLARE_TUNNEL_TOKEN=
+ENV
+    fi
+    # it holds secrets (a tunnel token, single sign-on's client secret): root only
+    chmod 0600 /opt/mk-drive/.env
+
+    # a box set up by the pre-package install.sh has copies of the units in /etc; the package's own are in /lib
+    for u in mk-nasd.service mk-nas-snapshot.service mk-nas-snapshot.timer mk-nas-replication.service mk-nas-replication.timer mk-drive.service; do
+      [ -f "/etc/systemd/system/$u" ] && [ ! -L "/etc/systemd/system/$u" ] && rm -f "/etc/systemd/system/$u"
+    done
+    [ -L /usr/local/bin/mk-nas ] && rm -f /usr/local/bin/mk-nas
+
+    systemctl daemon-reload 2>/dev/null || true
+    systemctl enable mk-nasd mk-nas-snapshot.timer mk-nas-replication.timer mk-drive docker >/dev/null 2>&1 || true
+    # inside an installer's chroot there is no systemd to talk to; the units start on first boot
+    if [ "$(stat -c %d:%i /)" = "$(stat -c %d:%i /proc/1/root/. 2>/dev/null)" ]; then
+      systemctl restart mk-nasd
+      systemctl start mk-nas-snapshot.timer mk-nas-replication.timer
+      # mk-drive.service is a oneshot that stays active: start alone would never bring a newly pinned image up
+      if [ "$stack_changed" = 1 ]; then
+        systemctl restart mk-drive || echo "mk-nas: the drive did not come up with the new image; see: journalctl -u mk-drive" >&2
+      else
+        systemctl start mk-drive || true
+      fi
+    fi
+    ;;
+esac
+exit 0

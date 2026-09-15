@@ -1,0 +1,55 @@
+#cloud-config
+# The hands-free variant for the QEMU test (make vm): the same as user-data
+# but identity and storage are filled in, the OS disk chosen by the serial
+# vm.sh gives it. Login nasadmin / mk-nas. Never write this one to a real stick.
+autoinstall:
+  version: 1
+  locale: en_US.UTF-8
+  keyboard:
+    layout: us
+  source:
+    id: ubuntu-server
+    search_drivers: false
+  identity:
+    hostname: mk-nas-vm
+    realname: mk-nas admin
+    username: nasadmin
+    password: "$6$mknasvm$Wbo1YDC8KiKv7/cYR9Isum4CmPuvvoeT7chwZt1qKSoonEvoliGl56Ye4Ixh0cglpfrOVLdXwEgOlRzl/wGs8."
+  storage:
+    layout:
+      name: direct
+      match:
+        serial: mknas-os
+  network:
+    version: 2
+    ethernets:
+      all-en:
+        match:
+          name: "en*"
+        dhcp4: true
+  ssh:
+    install-server: true
+    allow-pw: true
+  packages:
+    - zfsutils-linux
+    - smartmontools
+    - samba
+    - nfs-kernel-server
+    - avahi-daemon
+    - docker.io
+    - docker-compose-v2
+    - ca-certificates
+    - curl
+    - xz-utils
+  updates: security
+  timezone: UTC
+  kernel:
+    package: linux-generic
+  late-commands:
+    - mkdir -p /target/opt/mk-nas-src
+    - cp -a /cdrom/mk-nas/. /target/opt/mk-nas-src/
+    - sh -c 'mv /target/opt/mk-nas-src/install/out/mk-nas_*_amd64.deb /target/opt/mk-nas-src/install/out/mk-nas.deb'
+    - curtin in-target --target=/target -- bash /opt/mk-nas-src/install/install.sh /opt/mk-nas-src/install/out/mk-nas.deb 2>&1 | tee /dev/ttyS0
+    - sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT="console=tty1 console=ttyS0,115200"/' /target/etc/default/grub
+    - curtin in-target --target=/target -- update-grub
+  shutdown: poweroff

@@ -1,0 +1,9 @@
+#!/bin/sh
+# mk-nas: before the files go. Pools, datasets, shares, the database and the key stay.
+set -e
+case "$1" in
+  remove)
+    systemctl disable --now mk-nasd mk-nas-snapshot.timer mk-nas-replication.timer >/dev/null 2>&1 || true
+    ;;
+esac
+exit 0

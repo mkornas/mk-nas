@@ -1,0 +1,4 @@
+# Phase 2 — make
+
+- 2026-09-12 19:18 — 2026-09-12: agent side done and tested in the VM: pool.create made a mirror on the two virtio disks, dataset.create with location put tank/photos under /srv/locations owned by uid 1000, the timer took the first hourly and daily snapshots, the mk-nas CLI works. Found and fixed: PrivateTmp/ProtectHome in the unit hid the agent's mounts (own mount namespace). mk-drive side committed locally (dbcdc0d), not pushed; UI check in the VM pending an admin login.
+- 2026-09-12 19:35 — Everything on the card shipped: pool.create (mirror/raidz/single, typed), dataset.create with quota/compression/atime and the location mount picked up by mk-drive at once, snapshot now, per-dataset policies run by mk-nas-snapshot.timer; plus the mk-nas CLI. UI in mk-drive de35fe7. — main @ ce2a7f5 The stick carries the mk-drive image

@@ -1,0 +1,22 @@
+[Unit]
+Description=mk-nas agent (mk-nasd)
+After=zfs.target
+Wants=zfs.target
+
+[Service]
+Type=simple
+ExecStart=/opt/mk-nas/node/bin/node /opt/mk-nas/agent/src/index.ts
+Environment=NODE_NO_WARNINGS=1
+Environment=MK_NAS_SOCKET=/run/mk-nas.sock
+Environment=MK_NAS_AUDIT=/var/log/mk-nas/audit.jsonl
+# the stack's .env: DRIVE_UID/DRIVE_GID say who owns what the agent makes for the container
+EnvironmentFile=-/opt/mk-drive/.env
+Restart=on-failure
+RestartSec=2
+User=root
+NoNewPrivileges=true
+# no ProtectHome / PrivateTmp: both give the service its own mount namespace, and a
+# pool or dataset the agent mounts would then be invisible to the host and the container
+
+[Install]
+WantedBy=multi-user.target

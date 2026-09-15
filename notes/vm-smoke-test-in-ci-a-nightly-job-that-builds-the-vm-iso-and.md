@@ -1,0 +1,3 @@
+# *VM smoke test in CI** a nightly job that builds the VM ISO and runs the unattended install in QEMU with KVM on a self-hosted runner, then checks /api/meta and one mk-nas call
+
+- 2026-09-13 08:52 — .github/workflows/vm.yml: schedule 03:17 + dispatch on [self-hosted, linux, kvm]; make deb → iso.sh --unattended → vm.sh install (headless, 45 min cap) → vm.sh boot → /api/meta with nas:true → sshpass nasadmin/mk-nas + sudo -S mk-nas version|disks|health; serial log artifact. Not run yet: needs the runner registered with the kvm label and qemu/ovmf/xorriso/sshpass on it. — main @ 2435e33 CI: the nightly VM smoke test

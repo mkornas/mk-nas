@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.log
+.env
+.idea/
+install/cache/
+install/out/
