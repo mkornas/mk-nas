@@ -1,0 +1,3 @@
+# *Security: CI and packaging hardening** persist-credentials false, actions pinned by SHA, permissions on test.yml, vm.yml dispatch only from main and an isolated runner, chmod -R go-w in deb.sh, gpgv the Ubuntu SHA256SUMS, cloudflared by digest, cap_drop/no-new-privileges, re-validate DB rows in replicate, upgrade.sh UNSIGNED hint removed
+
+- 2026-09-15 16:08 — actions pinned by SHA, persist-credentials false, permissions, vm.yml main-only; deb.sh go-w + SOURCE_DATE_EPOCH; iso.sh gpgv with vendored cdimage key; cloudflared by digest; cap_drop ALL + no-new-privileges (VM: drive healthy, SMB/NAS work); replicate row checks were already in; upgrade.sh --unsigned — main @ f46e739 Security fixes, second batch from the 2026-09-15 audit

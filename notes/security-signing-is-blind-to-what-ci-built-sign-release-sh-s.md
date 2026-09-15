@@ -1,0 +1,3 @@
+# *Security: signing is blind to what CI built** sign-release.sh signs whatever SHA256SUMS the release has; the drive image hash comes from mk-drive's unsigned SHA256SUMS: commit the drive tgz hash with the pin, rebuild or compare the deb locally, write release.json and SHA256SUMS in the signing step
+
+- 2026-09-15 16:08 — sign-release.sh builds the deb from the tag in a worktree, compares with CI's, writes release.json + SHA256SUMS itself; drive tgz sha256 committed with the pin (install/mk-drive/sha256, release.sh --drive) — main @ f46e739 Security fixes, second batch from the 2026-09-15 audit
