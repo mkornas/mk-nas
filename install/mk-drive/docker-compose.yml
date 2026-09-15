@@ -18,6 +18,10 @@ services:
       TZ: ${TZ:-UTC}
       DRIVE_NAS_SOCKET: /run/mk-nas.sock
       DRIVE_PASSWORD_LOGIN: ${DRIVE_PASSWORD_LOGIN:-on}
+      # who may say where a request came from (CF-Connecting-IP, X-Forwarded-For): the box itself only. cloudflared runs
+      # with host networking and reaches the drive through the published port, which the drive sees as this network's
+      # gateway; everyone else's claim is ignored, so a LAN client cannot pick an address to dodge the login throttle
+      DRIVE_TRUSTED_PROXIES: 127.0.0.0/8,::1/128,172.31.88.1/32
       DRIVE_OIDC_ISSUER: ${DRIVE_OIDC_ISSUER:-}
       DRIVE_OIDC_CLIENT_ID: ${DRIVE_OIDC_CLIENT_ID:-}
       DRIVE_OIDC_CLIENT_SECRET: ${DRIVE_OIDC_CLIENT_SECRET:-}
@@ -55,3 +59,11 @@ services:
       resources:
         limits:
           memory: 128m
+
+# A fixed subnet, so the gateway the tunnel's requests arrive from is known (DRIVE_TRUSTED_PROXIES above).
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.31.88.0/24
+          gateway: 172.31.88.1

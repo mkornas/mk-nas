@@ -175,3 +175,36 @@ test('a job whose process is gone is failed on the next start; a live one is lef
   assert.equal(db.job(dead.id)?.state, 'failed');
   assert.equal(db.job(live.id)?.state, 'running');
 });
+
+test('a row that would not pass replication.set (a restored database) fails its job before any command runs', async () => {
+  const db = new Db(':memory:');
+  const f = fake({});
+  const pipe: Pipe = async () => ({ exitCode: 0, stderr: '' });
+  const deps = { run: f.run, pipe, db, cfg: { keyFile: '/nonexistent/key', knownHosts: '/nonexistent/kh' }, pid: process.pid };
+  const base = {
+    dataset: 'tank/photos',
+    host: 'backup-host',
+    user: 'root',
+    port: 22,
+    targetDataset: 'backup/photos',
+    recursive: false,
+    schedule: 'daily' as const,
+    keep: 2,
+  };
+  for (const [over, re] of [
+    [{ host: '-oProxyCommand=touch /tmp/x' }, /host: not a host name/],
+    [{ user: 'root -oProxyCommand' }, /user: not a user name/],
+    [{ dataset: '-R' }, /dataset: not a dataset name/],
+    [{ targetDataset: 'backup/photos@x' }, /targetDataset: not a dataset name/],
+    [{ port: 0 }, /port: 1 to 65535/],
+    [{ keep: 0 }, /keep: 1 to 100/],
+  ] as [Record<string, unknown>, RegExp][]) {
+    const r = db.setReplication({ ...base, ...over } as never);
+    const job = await replicate(deps, r.id);
+    assert.equal(job.state, 'failed', JSON.stringify(over));
+    assert.match(job.message ?? '', /is not valid/);
+    assert.match(job.message ?? '', re);
+    assert.equal(db.replication(r.id)?.lastResult, 'failed');
+  }
+  assert.deepEqual(f.calls, [], 'no ssh, no zfs, not even ssh-keygen');
+});

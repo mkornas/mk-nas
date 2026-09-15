@@ -5,7 +5,8 @@
  * smb.conf and the exports from the restored database, start everything.
  *   node src/restore-finish.ts [<passdb.tdb>]
  */
-import { chown, rename, rm, stat } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { lstat, open, rename, rm } from 'node:fs/promises';
 import { hostname } from 'node:os';
 import { createAudit } from './audit.ts';
 import { config } from './config.ts';
@@ -22,26 +23,29 @@ try {
   await must(run, ['systemctl', 'stop', 'mk-nasd', 'mk-drive']);
   for (const file of [config.db, config.driveDb]) {
     const restored = `${file}.restore`;
-    try {
-      await stat(restored);
-    } catch {
-      continue;
-    }
-    let owner: { uid: number; gid: number } | null = null;
-    try {
-      const s = await stat(file);
-      owner = { uid: s.uid, gid: s.gid };
-    } catch {
-      /* first time: no file to take the owner from */
-    }
+    // the drive's data directory is the container's, which could leave a link at either name: never follow one
+    const r = await lstat(restored).catch(() => null);
+    if (!r) continue;
+    if (!r.isFile()) throw new Error(`${restored} is not a regular file`);
+    const live = await lstat(file).catch(() => null);
+    if (live && !live.isFile()) throw new Error(`${file} is not a regular file`);
     await rm(`${file}-wal`, { force: true });
     await rm(`${file}-shm`, { force: true });
     await rename(restored, file);
-    if (owner) await chown(file, owner.uid, owner.gid);
+    // the owner goes to what was renamed, through a descriptor opened without following, and only if it is the file checked
+    const h = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const s = await h.stat();
+      if (!s.isFile() || s.ino !== r.ino || s.dev !== r.dev) throw new Error(`${restored} changed before it was moved into place`);
+      if (live) await h.chown(live.uid, live.gid);
+    } finally {
+      await h.close();
+    }
     steps.push(file);
   }
   if (passdb) {
     await must(run, ['pdbedit', '-i', `tdbsam:${passdb}`]);
+    await rm(passdb, { force: true });
     steps.push('passdb');
   }
   const db = new Db(config.db);

@@ -47,6 +47,31 @@ was built for. A drive newer than its agent shows a banner on every page
 asking for the upgrade above, and the Storage pages may misbehave until
 then. An agent newer than its drive is fine: verbs are only ever added.
 
+## What 0.7.1 changes on a box
+
+Security fixes from the audit of 2026-09-15. Install it.
+
+- The agent no longer loads `/opt/mk-drive/.env` into its environment; it
+  reads `DRIVE_UID` and `DRIVE_GID` from it and nothing else.
+- A settings restore brings back only known keys of the drive's `.env`
+  (sign-in, tunnel token, owner, time zone, password sign-in), never
+  `DRIVE_IMAGE` or anything else, and copies no symlinks in either
+  direction.
+- The settings backup refuses a dataset that anyone but root can write to,
+  such as a location: pick or create a plain dataset for it.
+- `user.set`, `user.smbPassword` and `user.remove` act only on accounts
+  mk-nas created (comment `mk-nas SMB user`, primary group `mk-nas-smb`).
+- Shares, snapshot policies, the backup dataset and copies read from the
+  database are checked again before they reach a config file or a command.
+- The drive's Docker network has a fixed subnet (172.31.88.0/24), and the
+  drive believes client addresses only from the box itself
+  (`DRIVE_TRUSTED_PROXIES`); the stack's network is recreated once.
+- Pins mk-drive 0.6.1: uploaded HTML, SVG and XML can no longer run as a
+  page; WebDAV takes only app passwords; session ids are no longer sent to
+  the browser; single sign-on requires a verified email; symlinks inside a
+  location are not followed; upload links have size, count and rate limits;
+  login and share-password guessing is throttled properly.
+
 ## What 0.7.0 changes on a box
 
 - **Storage → Network → Reach the drive from outside**: paste a Cloudflare
@@ -162,8 +187,10 @@ then. An agent newer than its drive is fine: verbs are only ever added.
 - bash and zsh completion for `mk-nas` under `/usr/share`.
 - `DRIVE_UID` / `DRIVE_GID` in `/opt/mk-drive/.env` (written on a fresh
   install, 1000 when absent): who the container runs as, who owns new
-  locations and files written over the network. `mk-nasd.service` reads
-  that `.env`, so `systemctl restart mk-nasd` after changing them.
+  locations and files written over the network. The agent reads those two
+  lines from that `.env` when it starts (only those: the unit no longer
+  loads the file into its environment), so `systemctl restart mk-nasd`
+  after changing them.
 - the `jobs` table gained a `pool` column and a `scrub_policies` table
   appeared — added in place, an older agent ignores both.
 

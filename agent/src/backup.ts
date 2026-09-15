@@ -8,7 +8,9 @@
  * kept) — so it replicates with everything else, and a dead OS disk is
  * the stick, `pool.import`, and one restore.
  */
-import { chmod, copyFile, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { randomBytes } from 'node:crypto';
+import { constants } from 'node:fs';
+import { copyFile, lstat, mkdir, open, readFile, rename, rm, stat, writeFile, type FileHandle } from 'node:fs/promises';
 import { hostname } from 'node:os';
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -17,6 +19,7 @@ import type { Db } from './db.ts';
 import { BadArgs, datasetName } from './names.ts';
 import { stamp } from './policy.ts';
 import { must, type Runner } from './run.ts';
+import { tokenOf } from './tunnel.ts';
 import { confirmed } from './write.ts';
 import { listDatasets, listSnapshots } from './zfs.ts';
 
@@ -51,7 +54,9 @@ async function exists(p: string): Promise<boolean> {
   }
 }
 
-async function mountpointOf(run: Runner, dataset: string): Promise<string> {
+async function mountpointOf(run: Runner, datasetArg: string): Promise<string> {
+  // the name may come from the database, which a restore replaces: checked again before it reaches zfs
+  const dataset = datasetName(datasetArg);
   const [d] = await listDatasets(run, dataset);
   if (!d || d.name !== dataset) throw new BadArgs(`${dataset}: no such dataset`);
   if (!d.mountpoint || !d.mounted) throw new BadArgs(`${dataset} is not mounted`);
@@ -68,12 +73,141 @@ function snapshotSqlite(file: string, to: string): void {
   }
 }
 
+const { O_RDONLY, O_WRONLY, O_CREAT, O_EXCL, O_NOFOLLOW } = constants;
+
+/**
+ * A file of a backup, opened only when it is a regular file reached through real directories and lives on the
+ * backup's own filesystem: whoever can write the dataset could otherwise point an entry at the ssh key or /etc/shadow.
+ */
+async function openSource(dir: string, rel: string): Promise<FileHandle> {
+  const root = await lstat(dir);
+  if (!root.isDirectory()) throw new BadArgs(`${DIR} is not a directory`);
+  const parts = rel.split('/');
+  for (let i = 1; i < parts.length; i++)
+    if (!(await lstat(join(dir, ...parts.slice(0, i)))).isDirectory()) throw new BadArgs(`${rel} in the backup: ${parts[i - 1]} is not a directory`);
+  const s = await lstat(join(dir, rel));
+  if (!s.isFile()) throw new BadArgs(`${rel} in the backup is not a regular file`);
+  const h = await open(join(dir, rel), O_RDONLY | O_NOFOLLOW);
+  const f = await h.stat();
+  if (!f.isFile() || f.dev !== root.dev || f.ino !== s.ino) {
+    await h.close();
+    throw new BadArgs(`${rel} in the backup changed while it was opened`);
+  }
+  return h;
+}
+
+/**
+ * Writes `to` without following a link at that name: a fresh file beside it (O_EXCL|O_NOFOLLOW, so nothing already
+ * there is opened), filled, then renamed over — rename replaces a link, it never writes through one.
+ */
+async function writeNoFollow(to: string, mode: number, fill: (h: FileHandle) => Promise<void>): Promise<void> {
+  const tmp = `${to}.mk-nas-${randomBytes(6).toString('hex')}`;
+  const h = await open(tmp, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, mode);
+  try {
+    await h.chmod(mode);
+    await fill(h);
+  } catch (e) {
+    await h.close();
+    await rm(tmp, { force: true });
+    throw e;
+  }
+  await h.close();
+  await rename(tmp, to);
+}
+
+async function copyInto(from: FileHandle, to: FileHandle): Promise<void> {
+  const buf = Buffer.allocUnsafe(1 << 20);
+  for (let pos = 0; ;) {
+    const { bytesRead } = await from.read(buf, 0, buf.length, pos);
+    if (!bytesRead) return;
+    for (let off = 0; off < bytesRead;) off += (await to.write(buf, off, bytesRead - off)).bytesWritten;
+    pos += bytesRead;
+  }
+}
+
 async function readManifest(dir: string): Promise<Manifest | null> {
   try {
-    return JSON.parse(await readFile(join(dir, 'manifest.json'), 'utf8')) as Manifest;
+    const h = await openSource(dir, 'manifest.json');
+    try {
+      return JSON.parse(await h.readFile('utf8')) as Manifest;
+    } finally {
+      await h.close();
+    }
   } catch {
     return null;
   }
+}
+
+/**
+ * The backup is written by path: when anyone but root can write the dataset's top directory (a location is the
+ * container's), a link could be swapped in under the agent mid-write, and the key and Samba's passwords do not belong there.
+ */
+async function rootOnly(mp: string, dataset: string): Promise<void> {
+  const s = await lstat(mp);
+  if (!s.isDirectory() || s.uid !== (process.getuid?.() ?? 0) || s.mode & 0o022)
+    throw new BadArgs(`${dataset}: others can write to it; the settings backup needs a dataset only root writes to (not a location)`);
+}
+
+/** What a value from the backup's mk-drive.env must look like, per key; a key not here is never restored. */
+const plain = (v: string) => /^[^\x00-\x1f\x7f"'`\\$]{0,1024}$/.test(v);
+const ENV_KEYS: Record<string, (v: string) => boolean> = {
+  DRIVE_UID: (v) => /^\d{1,10}$/.test(v),
+  DRIVE_GID: (v) => /^\d{1,10}$/.test(v),
+  TZ: (v) => /^[A-Za-z0-9_+-]{1,32}(\/[A-Za-z0-9_+-]{1,32}){0,3}$/.test(v),
+  DRIVE_PASSWORD_LOGIN: (v) => ['on', 'lan', 'off'].includes(v),
+  DRIVE_OIDC_ISSUER: (v) => {
+    try {
+      return plain(v) && !/\s/.test(v) && ['http:', 'https:'].includes(new URL(v).protocol);
+    } catch {
+      return false;
+    }
+  },
+  DRIVE_OIDC_CLIENT_ID: plain,
+  DRIVE_OIDC_CLIENT_SECRET: plain,
+  DRIVE_OIDC_NAME: plain,
+  CLOUDFLARE_TUNNEL_TOKEN: (v) => {
+    try {
+      return tokenOf(v).token === v;
+    } catch {
+      return false;
+    }
+  },
+};
+const keyOf = (line: string) => /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(line)?.[1];
+
+/**
+ * The drive's .env after a restore: the file on this box, line for line, with the allow-listed keys the backup has
+ * set to the backup's values. Everything else in the backup is left behind — DRIVE_IMAGE too, since it chooses the
+ * image the drive runs, and MK_NAS_GID, which is this box's group. A key whose value fails its check keeps this box's
+ * value and gets a comment saying so (the value itself is never written), so one odd line does not stop a restore.
+ */
+export function mergeDriveEnv(current: string, backup: string): string {
+  const taken = new Map<string, string | null>();
+  for (const line of backup.split(/\r?\n/)) {
+    const key = keyOf(line);
+    if (!key || !Object.hasOwn(ENV_KEYS, key)) continue;
+    // the last line wins, as in docker compose; only KEY=value, optionally quoted as a whole
+    const m = /^([A-Z_][A-Z0-9_]*)=(.*)$/.exec(line);
+    const value = m?.[2].replace(/^(["'])(.*)\1$/, '$2');
+    taken.set(key, m && value !== undefined && (value === '' || ENV_KEYS[key](value)) ? line : null);
+  }
+  const out = current.split('\n');
+  while (out.length && out.at(-1) === '') out.pop();
+  for (const [key, line] of taken) {
+    if (line === null) {
+      const note = `# ${key} from the settings backup was not restored: its value did not pass the check`;
+      if (!out.includes(note)) out.push(note);
+      continue;
+    }
+    // in place of this box's first line for the key, the others dropped
+    const at = out.findIndex((l) => keyOf(l) === key);
+    if (at === -1) out.push(line);
+    else {
+      out[at] = line;
+      for (let i = out.length - 1; i > at; i--) if (keyOf(out[i]) === key) out.splice(i, 1);
+    }
+  }
+  return out.length ? out.join('\n') + '\n' : '';
 }
 
 export async function readBackup(run: Runner, db: Db, cfg: BackupConfig): Promise<ConfigBackup> {
@@ -107,7 +241,7 @@ export async function setBackup(run: Runner, db: Db, cfg: BackupConfig, dataset:
   else {
     const name = datasetName(dataset);
     if (!name.includes('/')) throw new BadArgs('pick a dataset, not a pool');
-    await mountpointOf(run, name);
+    await rootOnly(await mountpointOf(run, name), name);
     db.setConfigBackup(name);
   }
   return readBackup(run, db, cfg);
@@ -119,10 +253,13 @@ export async function runBackup(run: Runner, db: Db, cfg: BackupConfig, now = ne
   if (!row) throw new BadArgs('no dataset was chosen for the settings backup');
   try {
     const mp = await mountpointOf(run, row.dataset);
+    await rootOnly(mp, row.dataset);
     const dir = join(mp, DIR);
     const fresh = `${dir}.new`;
+    // rm unlinks a link instead of following it; mkdir without recursive refuses whatever is still in the way
     await rm(fresh, { recursive: true, force: true });
-    await mkdir(join(fresh, 'ssh'), { recursive: true, mode: 0o700 });
+    await mkdir(fresh, { mode: 0o700 });
+    await mkdir(join(fresh, 'ssh'), { mode: 0o700 });
     const files: string[] = [];
     snapshotSqlite(cfg.db, join(fresh, 'mk-nas.db'));
     files.push('mk-nas.db');
@@ -140,7 +277,10 @@ export async function runBackup(run: Runner, db: Db, cfg: BackupConfig, now = ne
       await copyFile(from, join(fresh, to));
       files.push(to);
     }
-    if (await exists(cfg.driveDb)) {
+    // the drive's data directory is the container's: its database must be a file, not a link to one of root's
+    const driveDb = await lstat(cfg.driveDb).catch(() => null);
+    if (driveDb && !driveDb.isFile()) throw new Error(`${cfg.driveDb} is not a regular file`);
+    if (driveDb) {
       snapshotSqlite(cfg.driveDb, join(fresh, 'mk-drive.db'));
       files.push('mk-drive.db');
     }
@@ -148,7 +288,7 @@ export async function runBackup(run: Runner, db: Db, cfg: BackupConfig, now = ne
     await writeFile(join(fresh, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n', { mode: 0o600 });
     const old = `${dir}.old`;
     await rm(old, { recursive: true, force: true });
-    if (await exists(dir)) await rename(dir, old);
+    if (await lstat(dir).catch(() => null)) await rename(dir, old);
     await rename(fresh, dir);
     await rm(old, { recursive: true, force: true });
     // the history is ZFS's: one snapshot per backup, the newest 30 kept
@@ -192,21 +332,43 @@ export async function restoreBackup(
   if (!m) throw new BadArgs(`${name} holds no settings backup`);
   const has = (f: string) => m.files.includes(f);
   if (!has('mk-nas.db')) throw new BadArgs('the backup has no agent database');
-  await mkdir(dirname(cfg.sshKey), { recursive: true, mode: 0o700 });
-  for (const [f, to, mode] of [
-    ['ssh/id_ed25519', cfg.sshKey, 0o600],
-    ['ssh/id_ed25519.pub', `${cfg.sshKey}.pub`, 0o644],
-    ['ssh/known_hosts', cfg.knownHosts, 0o600],
-    ['90-mk-nas.yaml', cfg.netplanFile, 0o600],
-    ['mk-drive.env', cfg.driveEnv, 0o600],
-  ] as [string, string, number][]) {
-    if (!has(f)) continue;
-    await mkdir(dirname(to), { recursive: true });
-    await copyFile(join(dir, f), to);
-    await chmod(to, mode);
+  // Samba's passwords wait in root's own directory for the finisher, not in the dataset where they could change meanwhile
+  const passdb = join(dirname(cfg.db), 'passdb.tdb.restore');
+  const copies = (
+    [
+      ['ssh/id_ed25519', cfg.sshKey, 0o600],
+      ['ssh/id_ed25519.pub', `${cfg.sshKey}.pub`, 0o644],
+      ['ssh/known_hosts', cfg.knownHosts, 0o600],
+      ['90-mk-nas.yaml', cfg.netplanFile, 0o600],
+      ['mk-nas.db', `${cfg.db}.restore`, 0o600],
+      ['mk-drive.db', `${cfg.driveDb}.restore`, 0o600],
+      ['passdb.tdb', passdb, 0o600],
+    ] as [string, string, number][]
+  ).filter(([f]) => has(f));
+  // every source is opened before anything is written: a backup with a link in it restores nothing
+  const sources = new Map<string, FileHandle>();
+  try {
+    for (const f of [...copies.map(([f]) => f), ...(has('mk-drive.env') ? ['mk-drive.env'] : [])]) sources.set(f, await openSource(dir, f));
+    const env = sources.get('mk-drive.env');
+    if (env && (await env.stat()).size > 1 << 20) throw new BadArgs('mk-drive.env in the backup is too large to be an .env');
+    await mkdir(dirname(cfg.sshKey), { recursive: true, mode: 0o700 });
+    for (const [f, to, mode] of copies) {
+      await mkdir(dirname(to), { recursive: true });
+      // the drive's data directory is the container's: whatever it left at the .restore name goes, unfollowed
+      if (to.endsWith('.restore')) await rm(to, { force: true });
+      await writeNoFollow(to, mode, (h) => copyInto(sources.get(f)!, h));
+    }
+    if (env) {
+      const backup = await env.readFile('utf8');
+      const current = await readFile(cfg.driveEnv, 'utf8').catch((e: NodeJS.ErrnoException) => {
+        if (e.code === 'ENOENT') return '';
+        throw e;
+      });
+      await writeNoFollow(cfg.driveEnv, 0o600, (h) => h.writeFile(mergeDriveEnv(current, backup)));
+    }
+  } finally {
+    for (const h of sources.values()) await h.close();
   }
-  await copyFile(join(dir, 'mk-nas.db'), `${cfg.db}.restore`);
-  if (has('mk-drive.db')) await copyFile(join(dir, 'mk-drive.db'), `${cfg.driveDb}.restore`);
-  cfg.spawn([process.execPath, new URL('./restore-finish.ts', import.meta.url).pathname, has('passdb.tdb') ? join(dir, 'passdb.tdb') : '']);
+  cfg.spawn([process.execPath, new URL('./restore-finish.ts', import.meta.url).pathname, has('passdb.tdb') ? passdb : '']);
   return { restoring: true, files: m.files, takenAt: m.at };
 }

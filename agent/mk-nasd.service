@@ -9,8 +9,9 @@ ExecStart=/opt/mk-nas/node/bin/node /opt/mk-nas/agent/src/index.ts
 Environment=NODE_NO_WARNINGS=1
 Environment=MK_NAS_SOCKET=/run/mk-nas.sock
 Environment=MK_NAS_AUDIT=/var/log/mk-nas/audit.jsonl
-# the stack's .env: DRIVE_UID/DRIVE_GID say who owns what the agent makes for the container
-EnvironmentFile=-/opt/mk-drive/.env
+# no EnvironmentFile for the stack's .env (/opt/mk-drive/.env): it is the drive's, a settings restore writes it, and
+# a variable there such as NODE_OPTIONS would run code in this root process; config.ts reads DRIVE_UID/DRIVE_GID
+# from it (who owns what the agent makes for the container) and nothing else
 Restart=on-failure
 RestartSec=2
 User=root

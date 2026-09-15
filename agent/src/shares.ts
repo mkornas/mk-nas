@@ -114,7 +114,18 @@ async function writeAtomically(file: string, text: string): Promise<void> {
 
 /** Every stored share with its current mountpoint from ZFS (a share whose dataset went away keeps a null mountpoint and is skipped in the configs). */
 export async function listShares(run: Runner, db: Db): Promise<Share[]> {
-  const stored = db.shares();
+  // rows can come from a restored database: a name or an NFS client that share.set would refuse never reaches smb.conf or
+  // the exports (a client like *(rw,no_root_squash) would hand out root over NFS); such a share is left out and logged
+  const stored = db.shares().filter((s) => {
+    try {
+      datasetName(s.dataset);
+      s.nfsClients.forEach(nfsClient);
+      return true;
+    } catch (e) {
+      console.error(`share ${JSON.stringify(s.dataset)} skipped: ${(e as Error).message}`);
+      return false;
+    }
+  });
   if (stored.length === 0) return [];
   const datasets = await listDatasets(run);
   return stored.map((s) => ({ ...s, mountpoint: datasets.find((d) => d.name === s.dataset)?.mountpoint ?? null }));
@@ -180,17 +191,30 @@ export async function removeShare(run: Runner, db: Db, cfg: ShareConfig, dataset
   return { removed: name };
 }
 
-async function unixUserExists(run: Runner, name: string): Promise<boolean> {
-  return (await run(['getent', 'passwd', name])).exitCode === 0;
+const COMMENT = 'mk-nas SMB user';
+
+/**
+ * Whether the Unix account is one mk-nas made (null: no such account). The account itself says so — our comment and
+ * the SMB group as its primary group, as useradd below leaves it — because a row in smb_users does not: an older agent
+ * added an existing account to the table as it was, and a restored database can name any account.
+ */
+async function ours(run: Runner, smbGroup: string, name: string): Promise<boolean | null> {
+  const passwd = await run(['getent', 'passwd', name]);
+  if (passwd.exitCode !== 0) return null;
+  const f = passwd.stdout.trim().split(':');
+  if (f[0] !== name || f[4] !== COMMENT) return false;
+  const group = await run(['getent', 'group', smbGroup]);
+  return group.exitCode === 0 && group.stdout.trim().split(':')[2] === f[3];
 }
 
-/** The Unix user Samba needs, without a shell or a home; the password comes separately. */
+/** The Unix user Samba needs, without a shell or a home; the password comes separately. Never an account mk-nas did not make. */
 export async function setUser(run: Runner, db: Db, cfg: ShareConfig, nameArg: unknown): Promise<SmbUser> {
   const name = smbUserName(nameArg);
   if ((await run(['getent', 'group', cfg.smbGroup])).exitCode !== 0) await must(run, ['groupadd', '--system', cfg.smbGroup]);
-  if (!(await unixUserExists(run, name)))
-    await must(run, ['useradd', '--system', '--no-create-home', '--shell', '/usr/sbin/nologin', '--gid', cfg.smbGroup, '--comment', 'mk-nas SMB user', name]);
-  else await must(run, ['usermod', '--append', '--groups', cfg.smbGroup, name]);
+  const mine = await ours(run, cfg.smbGroup, name);
+  if (mine === false) throw new BadArgs(`${name} is an existing system account; use another name`);
+  if (mine === null)
+    await must(run, ['useradd', '--system', '--no-create-home', '--shell', '/usr/sbin/nologin', '--gid', cfg.smbGroup, '--comment', COMMENT, name]);
   return db.setSmbUser(name, false);
 }
 
@@ -205,10 +229,13 @@ export async function setSmbPassword(run: Runner, db: Db, cfg: ShareConfig, name
   return db.setSmbUser(name, true);
 }
 
-export async function removeUser(run: Runner, db: Db, nameArg: unknown): Promise<{ removed: string }> {
+export async function removeUser(run: Runner, db: Db, cfg: ShareConfig, nameArg: unknown): Promise<{ removed: string }> {
   const name = smbUserName(nameArg);
+  const mine = await ours(run, cfg.smbGroup, name);
+  // an account mk-nas did not make is never deleted; one an older agent put in the table only loses its Samba password and its row
+  if (mine === false && !db.smbUser(name)) throw new BadArgs(`${name} is a system account mk-nas did not make; it is not removed`);
   await run(['smbpasswd', '-x', name]);
-  if (await unixUserExists(run, name)) await must(run, ['userdel', name]);
+  if (mine) await must(run, ['userdel', name]);
   db.removeSmbUser(name);
   return { removed: name };
 }

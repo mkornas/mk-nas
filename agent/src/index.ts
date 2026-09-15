@@ -52,10 +52,12 @@ const server = await listen({
         MK_NAS_SMB_CONF: config.smbConf,
         MK_NAS_EXPORTS: config.exportsFile,
         MK_NAS_SMB_GROUP: config.smbGroup,
-        MK_NAS_OWNER_UID: String(config.ownerUid),
-        MK_NAS_OWNER_GID: String(config.ownerGid),
+        MK_NAS_DRIVE_ENV: config.driveEnv,
         NODE_NO_WARNINGS: '1',
       };
+      // the owner comes from the .env the job reads itself (a restore may have just changed it), unless it was overridden here
+      if (process.env.MK_NAS_OWNER_UID) env.MK_NAS_OWNER_UID = process.env.MK_NAS_OWNER_UID;
+      if (process.env.MK_NAS_OWNER_GID) env.MK_NAS_OWNER_GID = process.env.MK_NAS_OWNER_GID;
       // its own transient unit as root, so stopping or upgrading the agent does not kill the job (detach.ts)
       const full = detachedArgv(argv, env, process.getuid?.() === 0);
       const child = spawn(full[0], full.slice(1), { detached: true, stdio: 'ignore', env });

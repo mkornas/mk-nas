@@ -231,6 +231,17 @@ export async function replicate(deps: ReplicateDeps, id: number): Promise<Job> {
     return db.finishJob(job.id, 'failed', message);
   };
   try {
+    // the row may come from a restored database rather than replication.set: its names are checked again before any argv
+    try {
+      datasetName(r.dataset);
+      datasetName(r.targetDataset, 'targetDataset');
+      hostName(r.host);
+      userName(r.user);
+      portNumber(r.port);
+      if (!Number.isInteger(r.keep) || r.keep < 1 || r.keep > 100) throw new BadArgs('keep: 1 to 100');
+    } catch (e) {
+      return fail(`replication ${id} is not valid (${(e as Error).message}); set it again`);
+    }
     await ensureKey(run, cfg);
     const latest = `repl-${stamp(deps.now?.() ?? new Date())}`;
     await must(run, ['zfs', 'snapshot', ...(r.recursive ? ['-r'] : []), `${r.dataset}@${latest}`]);

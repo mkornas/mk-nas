@@ -17,6 +17,7 @@ import { plan, scrubDue, selfTestWindow } from './policy.ts';
 import { revertIfExpired } from './network.ts';
 import { noteScan, reconcileScans } from './scans.ts';
 import { must, run } from './run.ts';
+import { datasetName } from './names.ts';
 import { checkDue, checkForUpdate } from './updates.ts';
 import { getPool, listPools, listSnapshots, writtenSince } from './zfs.ts';
 
@@ -30,7 +31,15 @@ try {
     console.log('reverted an unconfirmed network change');
     await audit({ ts: now.toISOString(), verb: 'tick.network-revert', args: {}, ok: true, ms: 0 });
   }
-  const policies = db.policies();
+  // a restored database can hold any dataset name: only the ones policy.set would accept reach zfs
+  const policies = db.policies().filter((p) => {
+    try {
+      return datasetName(p.dataset) === p.dataset;
+    } catch {
+      console.error(`policy for ${JSON.stringify(p.dataset)} skipped: not a dataset name`);
+      return false;
+    }
+  });
   if (policies.length) {
     const existing = await listSnapshots(run);
     const written = await writtenSince(

@@ -3,6 +3,31 @@ import { readFileSync } from 'node:fs';
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string };
 
+/** DRIVE_UID or DRIVE_GID in the drive stack's .env text: the last line for it, digits only; null otherwise. */
+export function driveId(env: string, key: 'DRIVE_UID' | 'DRIVE_GID'): number | null {
+  const line = env
+    .split(/\r?\n/)
+    .filter((l) => new RegExp(`^\\s*${key}\\s*=`).test(l))
+    .at(-1);
+  const value = line
+    ?.slice(line.indexOf('=') + 1)
+    .trim()
+    .replace(/^(["'])(.*)\1$/, '$2');
+  return value && /^\d+$/.test(value) ? Number(value) : null;
+}
+
+function readText(file: string): string {
+  try {
+    return readFileSync(file, 'utf8');
+  } catch {
+    return '';
+  }
+}
+
+const driveEnv = process.env.MK_NAS_DRIVE_ENV || '/opt/mk-drive/.env';
+// never loaded into the environment (a NODE_OPTIONS there would run as root): only these two numbers are taken from it
+const driveEnvText = readText(driveEnv);
+
 export interface Config {
   socket: string;
   /** The group that may talk to the socket; chown skipped when it does not exist or we are not root. */
@@ -55,14 +80,14 @@ export const config: Config = {
   smbConf: process.env.MK_NAS_SMB_CONF || '/etc/samba/smb.conf',
   exportsFile: process.env.MK_NAS_EXPORTS || '/etc/exports.d/mk-nas.exports',
   smbGroup: process.env.MK_NAS_SMB_GROUP || 'mk-nas-smb',
-  // the unit reads the stack's .env too, so DRIVE_UID/DRIVE_GID there own locations and files written over the network
-  ownerUid: Number(process.env.MK_NAS_OWNER_UID) || Number(process.env.DRIVE_UID) || 1000,
-  ownerGid: Number(process.env.MK_NAS_OWNER_GID) || Number(process.env.DRIVE_GID) || 1000,
+  // DRIVE_UID/DRIVE_GID in the stack's .env own locations and files written over the network
+  ownerUid: Number(process.env.MK_NAS_OWNER_UID) || driveId(driveEnvText, 'DRIVE_UID') || 1000,
+  ownerGid: Number(process.env.MK_NAS_OWNER_GID) || driveId(driveEnvText, 'DRIVE_GID') || 1000,
   sshKey: process.env.MK_NAS_SSH_KEY || '/var/lib/mk-nas/ssh/id_ed25519',
   knownHosts: process.env.MK_NAS_KNOWN_HOSTS || '/var/lib/mk-nas/ssh/known_hosts',
   netplanFile: process.env.MK_NAS_NETPLAN || '/etc/netplan/90-mk-nas.yaml',
   netplanPending: process.env.MK_NAS_NETPLAN_PENDING || '/var/lib/mk-nas/netplan-pending.json',
-  driveEnv: process.env.MK_NAS_DRIVE_ENV || '/opt/mk-drive/.env',
+  driveEnv,
   driveDb: process.env.MK_NAS_DRIVE_DB || '/opt/mk-drive/data/mk-drive.db',
   updatesRepo: process.env.MK_NAS_UPDATES_REPO || 'mkornas/mk-nas',
   driveRepo: process.env.MK_NAS_DRIVE_REPO || 'mkornas/mk-drive',

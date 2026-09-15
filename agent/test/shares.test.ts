@@ -8,7 +8,7 @@ import type { Share } from '../../shared/types.ts';
 import { Db } from '../src/db.ts';
 import type { RunOptions, Runner, RunResult } from '../src/run.ts';
 import { handle } from '../src/server.ts';
-import { exportsFile, nfsClient, smbConf, smbUserName, type ShareConfig } from '../src/shares.ts';
+import { exportsFile, listShares, nfsClient, smbConf, smbUserName, type ShareConfig } from '../src/shares.ts';
 import type { Deps } from '../src/verbs.ts';
 
 const NET = {
@@ -245,5 +245,104 @@ test('SMB users: useradd without a shell, the password on stdin only, redacted i
     assert.ok(f.calls.some((c) => c.argv.join(' ') === 'smbpasswd -x anna'));
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('SMB users: only accounts mk-nas made are changed or removed; an existing system account is refused', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'mk-nas-users-'));
+  const audit = async () => {};
+  try {
+    const none = { argv: [], exitCode: 2, stdout: '', stderr: '' };
+    const f = fake({
+      'getent group mk-nas-smb': 'mk-nas-smb:x:996:\n',
+      'getent passwd www-data': 'www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin\n',
+      'getent passwd admin': 'admin:x:1000:1000:Admin,,,:/home/admin:/bin/bash\n',
+      // the comment is ours but the primary group is not: someone else's account
+      'getent passwd eve': 'eve:x:994:100:mk-nas SMB user:/nonexistent:/usr/sbin/nologin\n',
+      'getent passwd bob': 'bob:x:995:996:mk-nas SMB user:/home/bob:/usr/sbin/nologin\n',
+      'getent passwd carol': none,
+      'useradd *': '',
+      'smbpasswd *': '',
+      'userdel *': '',
+    });
+    const deps: Deps = {
+      run: f.run,
+      version: 't',
+      db: new Db(':memory:'),
+      locationsDir: '/srv/locations',
+      shares: cfg(dir),
+      replication: { keyFile: join(dir, 'key'), knownHosts: join(dir, 'kh') },
+      spawn: () => {},
+      network: NET,
+      backup: BKP,
+    };
+    const call = (verb: string, args: Record<string, unknown>) => handle({ id: 1, verb: verb as never, args }, deps, audit);
+    const changes = () => f.calls.filter((c) => ['useradd', 'usermod', 'userdel', 'smbpasswd'].includes(c.argv[0]));
+
+    for (const name of ['www-data', 'admin', 'eve']) {
+      for (const [verb, args, re] of [
+        ['user.set', { name }, /existing system account; use another name/],
+        ['user.smbPassword', { name, password: 'correct horse battery' }, /existing system account; use another name/],
+        ['user.remove', { name }, /mk-nas did not make/],
+      ] as [string, Record<string, unknown>, RegExp][]) {
+        const r = await call(verb, args);
+        assert.equal(!r.ok && r.error.code, 'bad-args', `${verb} ${name}`);
+        assert.match(!r.ok ? r.error.message : '', re);
+      }
+    }
+    assert.deepEqual(changes(), [], 'nothing touched a foreign account');
+    assert.deepEqual(deps.db.smbUsers(), []);
+
+    let res = await call('user.set', { name: 'carol' });
+    assert.equal(res.ok, true, JSON.stringify(res));
+    assert.equal(changes()[0].argv.at(-1), 'carol');
+    assert.equal(changes()[0].argv[0], 'useradd', 'a new name makes a new account');
+
+    f.calls.length = 0;
+    res = await call('user.smbPassword', { name: 'bob', password: 'correct horse battery' });
+    assert.equal(res.ok, true, JSON.stringify(res));
+    assert.deepEqual(
+      changes().map((c) => c.argv.join(' ')),
+      ['smbpasswd -a -s bob', 'smbpasswd -e bob'],
+      'an account mk-nas made (before the table knew it) gets its password, no useradd or usermod',
+    );
+    res = await call('user.remove', { name: 'bob' });
+    assert.equal(res.ok, true, JSON.stringify(res));
+    assert.ok(f.calls.some((c) => c.argv.join(' ') === 'userdel bob'));
+
+    // an existing account an older agent put in the table: out of Samba and the table, the account itself stays
+    deps.db.setSmbUser('admin', true);
+    f.calls.length = 0;
+    res = await call('user.remove', { name: 'admin' });
+    assert.equal(res.ok, true, JSON.stringify(res));
+    assert.deepEqual(
+      changes().map((c) => c.argv.join(' ')),
+      ['smbpasswd -x admin'],
+    );
+    assert.equal(deps.db.smbUser('admin'), null);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('rows from a restored database: a share with an NFS client share.set would refuse, or a bad dataset name, never reaches the exports', async () => {
+  const db = new Db(':memory:');
+  db.setShare({ dataset: 'tank/ok', smb: false, timeMachine: false, nfs: true, nfsClients: ['192.168.1.0/24'] });
+  db.setShare({ dataset: 'tank/evil', smb: false, timeMachine: false, nfs: true, nfsClients: ['*(rw,no_root_squash)'] });
+  db.setShare({ dataset: '-o/evil', smb: true, timeMachine: false, nfs: false, nfsClients: [] });
+  const run: Runner = async (argv) => ({ argv, exitCode: 0, stdout: '', stderr: '' });
+  const errors: string[] = [];
+  const original = console.error;
+  console.error = (m: string) => void errors.push(m);
+  try {
+    const shares = await listShares(run, db);
+    assert.deepEqual(
+      shares.map((s) => s.dataset),
+      ['tank/ok'],
+    );
+    assert.equal(errors.length, 2);
+  } finally {
+    console.error = original;
+    db.close();
   }
 });

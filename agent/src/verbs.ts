@@ -384,7 +384,7 @@ export const verbs: { [V in Verb]: Handler<V> } = {
   },
   async 'user.remove'(args, deps) {
     const a = only(args, ['name']);
-    return removeUser(deps.run, deps.db, a.name);
+    return removeUser(deps.run, deps.db, deps.shares, a.name);
   },
   async replications(args, deps) {
     only(args, []);
