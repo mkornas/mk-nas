@@ -442,8 +442,8 @@ test('SMB access per share: a list becomes valid users, read only and a write li
       share({ dataset: 'tank/ro', name: 'ro', mountpoint: '/srv/locations/ro', smbAccess: [{ user: 'bob', level: 'read' }] }),
     ],
     cfg('/tmp/never'),
-    'mako',
-    'mako',
+    'nasadmin',
+    'nasadmin',
   );
   const section = (n: string) => conf.split(`[${n}]`)[1]?.split('\n\n')[0] ?? '';
   assert.match(section('photos'), /read only = yes\n\s+valid users = alice bob\n\s+write list = alice/);

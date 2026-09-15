@@ -81,7 +81,7 @@ test('self-test support: ATA capabilities; an NVMe drive without the command get
   const nvme = JSON.parse(fx('smartctl-nvme-selftest.json'));
   delete nvme.nvme_self_test_log;
   assert.equal(selfTestSupported(nvme), false, 'asked -l selftest, got no log: the controller cannot');
-  assert.equal(longTestDue(nvme), false, 'the Kingston OS disk case: skipped, not failed every tick');
+  assert.equal(longTestDue(nvme), false, 'an NVMe OS disk without self-tests: skipped, not failed every tick');
   const ata = JSON.parse(fx('smartctl-ata-selftest.json'));
   delete ata.ata_smart_data.self_test.status;
   ata.ata_smart_data.capabilities = { self_tests_supported: false };

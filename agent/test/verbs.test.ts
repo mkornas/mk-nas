@@ -351,11 +351,11 @@ test('disks: a disk in standby is not woken; the listing shows its last awake re
 test('smart.test: refused on a disk that cannot run self-tests', async () => {
   const byId = await mkdtemp(join(tmpdir(), 'mk-nas-byid-'));
   try {
-    await symlink('/dev/nvme0n1', join(byId, 'nvme-KINGSTON_TEST'));
+    await symlink('/dev/nvme0n1', join(byId, 'nvme-VENDOR_TEST'));
     const nvme = JSON.parse(fx('smartctl-nvme-selftest.json'));
     delete nvme.nvme_self_test_log;
     const f = fake({ 'smartctl -j -H -A -i -c -l selftest /dev/nvme0n1': JSON.stringify(nvme) });
-    const res = await handle({ id: 1, verb: 'smart.test', args: { disk: 'nvme-KINGSTON_TEST', kind: 'long' } }, deps(f.run, { byIdDir: byId }), audit);
+    const res = await handle({ id: 1, verb: 'smart.test', args: { disk: 'nvme-VENDOR_TEST', kind: 'long' } }, deps(f.run, { byIdDir: byId }), audit);
     assert.match(!res.ok ? res.error.message : '', /cannot run self-tests/);
     assert.ok(!f.calls.some((c) => c.includes('-t')), 'no test was started');
   } finally {
