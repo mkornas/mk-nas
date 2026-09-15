@@ -22,6 +22,7 @@ One card per line, ranked top-down inside each column. `#p0`..`#p3` = priority, 
 - [ ] **Pilot box to 0.6.0** it runs 0.4.3, which has no updater: install/upgrade.sh mako@<box> 0.6.0 once it is back from maintenance; from then on it updates from its own System section #p1 #updates
 - [ ] *Disk spindown** an optional standby timer per pool disk (hdparm -S, kept across reboots), off by default, set on the Disks page; worth it only after 'Idle disks stay idle' #p3 #disks
 - [ ] *Disk temperatures over time** load the drivetemp module so SATA temperatures come from hwmon in the 5 s vitals (no smartctl, a sleeping disk is not woken), and show each disk's temperature with a half-hour sparkline on the overview #p3 #disks
+- [ ] **Found by name from Windows** Windows Explorer's network view does not list the box: Samba runs without nmbd and there is no WS-Discovery; add wsdd (or wsdd2) to the package so the box shows up under Network, and say in the Shares page which name Windows uses. Found when Déjà Dup on Linux failed on the bare smb://mk-nas name (the pages now show <name>.local) #p3 #shares
 
 ## Later
 

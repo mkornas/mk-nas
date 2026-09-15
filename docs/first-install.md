@@ -182,6 +182,8 @@ until files change (and none is taken while nothing changes), and brings back a 
    - macOS Finder: Go → Connect to Server → `smb://<name>.local`
    - Windows Explorer: `\\<name>.local`
    - iPhone Files: Browse → ⋯ → Connect to Server → `smb://<name>.local`
+   - Linux (Files, Déjà Dup backups): `smb://<name>.local/<share>` — the bare
+     `smb://<name>/…` fails with "Invalid argument" unless your DNS knows the name
 
    Sign in with the user name the account page shows and the SMB password.
 
