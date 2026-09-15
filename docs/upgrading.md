@@ -47,6 +47,20 @@ was built for. A drive newer than its agent shows a banner on every page
 asking for the upgrade above, and the Storage pages may misbehave until
 then. An agent newer than its drive is fine: verbs are only ever added.
 
+## What 0.6.0 changes on a box
+
+- The box looks for new releases once a day and shows a newer, signed one
+  under Storage → Overview → System, with its notes and **Install**
+  (`docs/updates.md`); `mk-nas update` does the same over ssh. The install
+  checks the maintainer's signature against `/opt/mk-nas/install/release-signers`,
+  which this package ships, before anything else. New verbs `update`,
+  `update.check` and `update.install`; the contract stays 2.
+- The agent now reaches `api.github.com` and `github.com` over HTTPS: once
+  a day for the check, and when a person installs a release.
+- `install/upgrade.sh` refuses an unsigned release unless `UNSIGNED=1`.
+  Releases before 0.6.0 are unsigned.
+- Pins mk-drive 0.4.0, which shows all this.
+
 ## What 0.5.0 changes on a box
 
 - Storage → Overview has a System section: the mk-nas and mk-drive
