@@ -47,6 +47,20 @@ was built for. A drive newer than its agent shows a banner on every page
 asking for the upgrade above, and the Storage pages may misbehave until
 then. An agent newer than its drive is fine: verbs are only ever added.
 
+## What 0.6.1 changes on a box
+
+- A disk that cannot run SMART self-tests (an NVMe drive without the
+  command) is skipped by the monthly self-test instead of failing the timer
+  every 15 minutes; **Long test** says so instead of trying.
+- Long self-tests start only between 01:00 and 05:00, the box's local time.
+- A scheduled snapshot is skipped when nothing was written to the dataset
+  since its newest snapshot: an idle pool is no longer written to every
+  hour, and the kept snapshots reach further back.
+- The disk listing (Disks, Overview, `health`) no longer wakes a sleeping
+  disk: it shows "asleep" with the last reading. A running self-test shows
+  on the disk. Pins mk-drive 0.4.1, which shows this.
+- A failed install from the box no longer leaves its downloads behind.
+
 ## What 0.6.0 changes on a box
 
 - The box looks for new releases once a day and shows a newer, signed one
