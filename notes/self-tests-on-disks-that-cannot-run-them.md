@@ -1,0 +1,3 @@
+# Self-tests on disks that cannot run them
+
+- 2026-09-15 11:13 — In mk-nas 0.6.1 (mk-drive 0.4.1). Self-test support from smartctl (ATA capabilities; an NVMe drive without the command has no self-test log), skipped by the tick and refused by smart.test; a failed start no longer fails the tick. Long tests start 01:00–05:00 local, no SMART reads for them by day. Snapshots skipped when zfs written is 0 (verified in the VM: no snapshot while unchanged, one right after a write). Disk listing reads with -n standby, shows asleep with the last awake reading and a running self-test (bay, health column, dialog). — main @ eb67149 Pin mk-drive 0.4.1; what 0.6.1 changes on a box
