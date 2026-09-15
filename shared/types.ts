@@ -146,7 +146,18 @@ export interface Share {
   nfs: boolean;
   /** NFS only: who may mount it (hosts, CIDRs, or *). */
   nfsClients: string[];
+  /**
+   * SMB only: who may open it, by SMB user name. null for a share from before 0.8.0, which every SMB user may open until
+   * someone sets a list (the drive turns such a share into admins-only when it first sees it). An empty list: nobody,
+   * and the share is not offered over SMB at all.
+   */
+  smbAccess: SmbAccess[] | null;
   updatedAt: string;
+}
+
+export interface SmbAccess {
+  user: string;
+  level: 'read' | 'write';
 }
 
 export interface ShareSetArgs {
@@ -155,6 +166,8 @@ export interface ShareSetArgs {
   timeMachine?: boolean;
   nfs?: boolean;
   nfsClients?: string[];
+  /** Replaces the list; omitted keeps it. */
+  smbAccess?: SmbAccess[];
 }
 
 /** A Unix + Samba user the agent made for a drive account. The password lives in Samba only. */

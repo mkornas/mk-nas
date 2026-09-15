@@ -175,7 +175,9 @@ until files change (and none is taken while nothing changes), and brings back a 
 
 1. **Storage → Shares** (or the globe icon on a dataset): turn on **SMB**
    for the dataset. Tick **Time Machine** on a dataset meant for Mac
-   backups.
+   backups. Under **Who can open it**, choose Read or Read and write per
+   person; the list starts from what they may see of that folder in the
+   drive, and nobody else can open the share.
 2. **Settings → Account → Network access**: set your **SMB password**. Each
    person with a drive account sets their own.
 3. Connect:

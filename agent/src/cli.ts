@@ -409,10 +409,17 @@ function print(verb: string, result: unknown): void {
             dataset: s.dataset,
             share: s.name,
             smb: s.smb ? (s.timeMachine ? 'on + time machine' : 'on') : 'off',
+            who: !s.smb
+              ? ''
+              : !s.smbAccess
+                ? 'every SMB user'
+                : s.smbAccess.length
+                  ? s.smbAccess.map((a: any) => `${a.user}${a.level === 'read' ? ' (read)' : ''}`).join(' ')
+                  : 'nobody',
             nfs: s.nfs ? `on (${s.nfsClients.length ? s.nfsClients.join(' ') : 'private networks'})` : 'off',
             path: s.mountpoint ?? 'not mounted',
           })),
-          ['dataset', 'share', 'smb', 'nfs', 'path'],
+          ['dataset', 'share', 'smb', 'who', 'nfs', 'path'],
         ),
       );
     case 'share.set':

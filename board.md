@@ -9,6 +9,8 @@ One card per line, ranked top-down inside each column. `#p0`..`#p3` = priority, 
 
 ## Now
 
+- [ ] **SMB access per share** each SMB share lists who may open it (read or read and write), prefilled in the drive from the grants on that location; Samba gets exactly that list (valid users, read only, write list); a share nobody may open is left out of smb.conf; existing shares become admins-only when the drive first sees them; removing an SMB user drops them from every list #p1 #shares #security
+
 ## Next
 
 - [ ] **Phase 0 — baseline** Ubuntu Server 24.04 on a small PC with Cockpit + 45Drives ZFS and file-sharing plugins; mk-drive on the datasets; two weeks of use; write notes/missing.md with what is still missing #p1 #phase0

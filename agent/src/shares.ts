@@ -6,7 +6,7 @@
  * (tests feed it rows); `apply` writes and reloads.
  */
 import { writeFile, rename, stat } from 'node:fs/promises';
-import type { Share, ShareSetArgs, SmbUser } from '../../shared/types.ts';
+import type { Share, ShareSetArgs, SmbAccess, SmbUser } from '../../shared/types.ts';
 import type { Db, StoredShare } from './db.ts';
 import { BadArgs, datasetName } from './names.ts';
 import { must, type Runner } from './run.ts';
@@ -34,6 +34,20 @@ export function nfsClient(v: unknown): string {
   if (typeof v !== 'string' || v === '' || !/^[A-Za-z0-9*][A-Za-z0-9.*:/-]{0,79}$/.test(v) || v.includes('('))
     throw new BadArgs(`nfsClients: "${String(v)}" is not a host, a network or *`);
   return v;
+}
+
+/** A share's SMB list as share.set takes it: known user names, one entry each, read or write. */
+export function smbAccessOf(v: unknown): SmbAccess[] {
+  if (!Array.isArray(v) || v.length > 200) throw new BadArgs('smbAccess must be a list of { user, level }');
+  const seen = new Set<string>();
+  return v.map((e) => {
+    const { user, level } = (e ?? {}) as { user?: unknown; level?: unknown };
+    const name = smbUserName(user);
+    if (level !== 'read' && level !== 'write') throw new BadArgs(`smbAccess: ${name} needs level read or write`);
+    if (seen.has(name)) throw new BadArgs(`smbAccess: ${name} is listed twice`);
+    seen.add(name);
+    return { user: name, level };
+  });
 }
 
 export const DEFAULT_NFS_CLIENTS = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'];
@@ -69,12 +83,24 @@ export function smbConf(shares: Share[], cfg: ShareConfig, ownerName: string, ow
   ];
   for (const s of shares) {
     if (!s.smb || !s.mountpoint) continue;
+    // who may open it: the share's own list (read only, writers on the write list), or, for a share from before lists, the
+    // whole SMB group; a list with nobody on it leaves the share out, since an empty valid users would let everyone in
+    let access: string[];
+    if (s.smbAccess === null) access = ['   read only = no', `   valid users = @${cfg.smbGroup}`];
+    else {
+      if (s.smbAccess.length === 0) continue;
+      const writers = s.smbAccess.filter((a) => a.level === 'write').map((a) => a.user);
+      access = [
+        '   read only = yes',
+        `   valid users = ${s.smbAccess.map((a) => a.user).join(' ')}`,
+        ...(writers.length ? [`   write list = ${writers.join(' ')}`] : []),
+      ];
+    }
     out.push(
       `[${s.name}]`,
       `   path = ${s.mountpoint}`,
       '   browseable = yes',
-      '   read only = no',
-      `   valid users = @${cfg.smbGroup}`,
+      ...access,
       `   force user = ${ownerName}`,
       `   force group = ${ownerGroup}`,
       '   create mask = 0664',
@@ -120,6 +146,7 @@ export async function listShares(run: Runner, db: Db): Promise<Share[]> {
     try {
       datasetName(s.dataset);
       s.nfsClients.forEach(nfsClient);
+      if (s.smbAccess !== null) smbAccessOf(s.smbAccess);
       return true;
     } catch (e) {
       console.error(`share ${JSON.stringify(s.dataset)} skipped: ${(e as Error).message}`);
@@ -174,12 +201,23 @@ export async function setShare(run: Runner, db: Db, cfg: ShareConfig, a: ShareSe
     if (!Array.isArray(a.nfsClients)) throw new BadArgs('nfsClients must be a list');
     nfsClients = a.nfsClients.map(nfsClient);
   }
+  const smbAccess = a.smbAccess === undefined ? (before?.smbAccess ?? null) : smbAccessOf(a.smbAccess);
   if (!smb && !nfs) {
     db.removeShare(dataset);
     await apply(run, db, cfg);
-    return { dataset, name: dataset.split('/').pop()!, mountpoint: d.mountpoint, smb, timeMachine, nfs, nfsClients, updatedAt: new Date().toISOString() };
+    return {
+      dataset,
+      name: dataset.split('/').pop()!,
+      mountpoint: d.mountpoint,
+      smb,
+      timeMachine,
+      nfs,
+      nfsClients,
+      smbAccess,
+      updatedAt: new Date().toISOString(),
+    };
   }
-  const stored: StoredShare = db.setShare({ dataset, smb, timeMachine, nfs, nfsClients });
+  const stored: StoredShare = db.setShare({ dataset, smb, timeMachine, nfs, nfsClients, smbAccess });
   const shares = await apply(run, db, cfg);
   return shares.find((s) => s.dataset === dataset) ?? { ...stored, mountpoint: d.mountpoint };
 }
@@ -237,6 +275,8 @@ export async function removeUser(run: Runner, db: Db, cfg: ShareConfig, nameArg:
   await run(['smbpasswd', '-x', name]);
   if (mine) await must(run, ['userdel', name]);
   db.removeSmbUser(name);
+  // a later account with the same name must not inherit this one's place on a share
+  if (db.dropSmbUserFromShares(name)) await apply(run, db, cfg);
   return { removed: name };
 }
 

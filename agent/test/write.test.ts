@@ -312,7 +312,7 @@ test('dataset.destroy: the name typed, no pool, no children, no share, no copy; 
     await refused({ dataset: 'tank/kids', confirm: 'tank/kids' }, /has children \(a, b\)/);
     await refused({ dataset: 'tank/docs', confirm: 'tank/docs' }, /has 2 snapshots/);
     await refused({ dataset: 'tank/docs', confirm: 'tank/docs', snapshots: 'yes' }, /snapshots must be/);
-    d.db.setShare({ dataset: 'tank/docs', smb: true, timeMachine: false, nfs: false, nfsClients: [] });
+    d.db.setShare({ dataset: 'tank/docs', smb: true, timeMachine: false, nfs: false, nfsClients: [], smbAccess: null });
     await refused({ dataset: 'tank/docs', confirm: 'tank/docs', snapshots: true }, /is shared/);
     d.db.removeShare('tank/docs');
     const r = d.db.setReplication({

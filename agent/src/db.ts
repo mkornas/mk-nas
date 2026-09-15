@@ -107,6 +107,7 @@ interface ShareRow {
   time_machine: number;
   nfs: number;
   nfs_clients: string;
+  smb_access: string | null;
   updated_at: number;
 }
 
@@ -174,6 +175,9 @@ export class Db {
     // added after 0.2.0: the schema only ever gains columns, so an older agent ignores it
     const cols = (this.db.prepare('PRAGMA table_info(jobs)').all() as unknown as { name: string }[]).map((c) => c.name);
     if (!cols.includes('pool')) this.db.exec('ALTER TABLE jobs ADD COLUMN pool TEXT');
+    // 0.8.0: who may open a share over SMB; NULL keeps a share from before (every SMB user) until someone sets a list
+    const shareCols = (this.db.prepare('PRAGMA table_info(shares)').all() as unknown as { name: string }[]).map((c) => c.name);
+    if (!shareCols.includes('smb_access')) this.db.exec('ALTER TABLE shares ADD COLUMN smb_access TEXT');
   }
 
   policies(): Policy[] {
@@ -251,11 +255,30 @@ export class Db {
   setShare(s: Omit<StoredShare, 'name' | 'updatedAt'>, now = Date.now()): StoredShare {
     this.db
       .prepare(
-        `INSERT INTO shares (dataset, smb, time_machine, nfs, nfs_clients, updated_at) VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(dataset) DO UPDATE SET smb = excluded.smb, time_machine = excluded.time_machine, nfs = excluded.nfs, nfs_clients = excluded.nfs_clients, updated_at = excluded.updated_at`,
+        `INSERT INTO shares (dataset, smb, time_machine, nfs, nfs_clients, smb_access, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(dataset) DO UPDATE SET smb = excluded.smb, time_machine = excluded.time_machine, nfs = excluded.nfs, nfs_clients = excluded.nfs_clients, smb_access = excluded.smb_access, updated_at = excluded.updated_at`,
       )
-      .run(s.dataset, s.smb ? 1 : 0, s.timeMachine ? 1 : 0, s.nfs ? 1 : 0, s.nfsClients.join(' '), now);
+      .run(
+        s.dataset,
+        s.smb ? 1 : 0,
+        s.timeMachine ? 1 : 0,
+        s.nfs ? 1 : 0,
+        s.nfsClients.join(' '),
+        s.smbAccess === null ? null : JSON.stringify(s.smbAccess),
+        now,
+      );
     return this.share(s.dataset)!;
+  }
+
+  /** Takes a removed SMB user off every share's list; returns whether any list changed. */
+  dropSmbUserFromShares(name: string, now = Date.now()): boolean {
+    let changed = false;
+    for (const s of this.shares()) {
+      if (!s.smbAccess?.some((a) => a.user === name)) continue;
+      this.setShare({ ...s, smbAccess: s.smbAccess.filter((a) => a.user !== name) }, now);
+      changed = true;
+    }
+    return changed;
   }
 
   removeShare(dataset: string): boolean {
@@ -470,8 +493,20 @@ const toShare = (r: ShareRow): StoredShare => ({
   timeMachine: !!r.time_machine,
   nfs: !!r.nfs,
   nfsClients: r.nfs_clients ? r.nfs_clients.split(' ') : [],
+  smbAccess: parseAccess(r.smb_access),
   updatedAt: new Date(r.updated_at).toISOString(),
 });
+
+/** The stored list, or null for a share from before lists existed; anything unreadable counts as nobody. */
+function parseAccess(v: string | null): StoredShare['smbAccess'] {
+  if (v === null) return null;
+  try {
+    const list = JSON.parse(v) as unknown;
+    return Array.isArray(list) ? (list as StoredShare['smbAccess'] & object[]) : [];
+  } catch {
+    return [];
+  }
+}
 const toReplication = (r: ReplicationRow): StoredReplication => ({
   id: r.id,
   dataset: r.dataset,

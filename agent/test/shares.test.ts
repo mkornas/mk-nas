@@ -8,7 +8,7 @@ import type { Share } from '../../shared/types.ts';
 import { Db } from '../src/db.ts';
 import type { RunOptions, Runner, RunResult } from '../src/run.ts';
 import { handle } from '../src/server.ts';
-import { exportsFile, listShares, nfsClient, smbConf, smbUserName, type ShareConfig } from '../src/shares.ts';
+import { exportsFile, listShares, nfsClient, smbAccessOf, smbConf, smbUserName, type ShareConfig } from '../src/shares.ts';
 import type { Deps } from '../src/verbs.ts';
 
 const NET = {
@@ -47,6 +47,7 @@ const share = (over: Partial<Share>): Share => ({
   timeMachine: false,
   nfs: false,
   nfsClients: [],
+  smbAccess: null,
   updatedAt: '',
   ...over,
 });
@@ -327,9 +328,9 @@ test('SMB users: only accounts mk-nas made are changed or removed; an existing s
 
 test('rows from a restored database: a share with an NFS client share.set would refuse, or a bad dataset name, never reaches the exports', async () => {
   const db = new Db(':memory:');
-  db.setShare({ dataset: 'tank/ok', smb: false, timeMachine: false, nfs: true, nfsClients: ['192.168.1.0/24'] });
-  db.setShare({ dataset: 'tank/evil', smb: false, timeMachine: false, nfs: true, nfsClients: ['*(rw,no_root_squash)'] });
-  db.setShare({ dataset: '-o/evil', smb: true, timeMachine: false, nfs: false, nfsClients: [] });
+  db.setShare({ dataset: 'tank/ok', smb: false, timeMachine: false, nfs: true, nfsClients: ['192.168.1.0/24'], smbAccess: null });
+  db.setShare({ dataset: 'tank/evil', smb: false, timeMachine: false, nfs: true, nfsClients: ['*(rw,no_root_squash)'], smbAccess: null });
+  db.setShare({ dataset: '-o/evil', smb: true, timeMachine: false, nfs: false, nfsClients: [], smbAccess: null });
   const run: Runner = async (argv) => ({ argv, exitCode: 0, stdout: '', stderr: '' });
   const errors: string[] = [];
   const original = console.error;
@@ -345,4 +346,77 @@ test('rows from a restored database: a share with an NFS client share.set would 
     console.error = original;
     db.close();
   }
+});
+
+test('SMB access per share: a list becomes valid users, read only and a write list; nobody leaves the share out; before lists, the group', () => {
+  const conf = smbConf(
+    [
+      share({
+        dataset: 'tank/photos',
+        name: 'photos',
+        smbAccess: [
+          { user: 'alice', level: 'write' },
+          { user: 'bob', level: 'read' },
+        ],
+      }),
+      share({ dataset: 'tank/docs', name: 'docs', mountpoint: '/srv/locations/docs', smbAccess: [] }),
+      share({ dataset: 'tank/old', name: 'old', mountpoint: '/srv/locations/old', smbAccess: null }),
+      share({ dataset: 'tank/ro', name: 'ro', mountpoint: '/srv/locations/ro', smbAccess: [{ user: 'bob', level: 'read' }] }),
+    ],
+    cfg('/tmp/never'),
+    'mako',
+    'mako',
+  );
+  const section = (n: string) => conf.split(`[${n}]`)[1]?.split('\n\n')[0] ?? '';
+  assert.match(section('photos'), /read only = yes\n\s+valid users = alice bob\n\s+write list = alice/);
+  assert.ok(!conf.includes('[docs]'), 'nobody on the list: not offered at all (an empty valid users would let everyone in)');
+  assert.match(section('old'), /read only = no\n\s+valid users = @mk-nas-smb/);
+  assert.match(section('ro'), /valid users = bob/);
+  assert.ok(!section('ro').includes('write list'));
+});
+
+test('smbAccessOf: SMB user names, read or write, each once', () => {
+  assert.deepEqual(
+    smbAccessOf([
+      { user: 'alice', level: 'write' },
+      { user: 'bob', level: 'read' },
+    ]),
+    [
+      { user: 'alice', level: 'write' },
+      { user: 'bob', level: 'read' },
+    ],
+  );
+  for (const bad of [
+    'alice',
+    [{ user: 'alice', level: 'admin' }],
+    [{ user: 'Alice Smith', level: 'read' }],
+    [{ user: '@mk-nas-smb', level: 'read' }],
+    [{ user: 'root', level: 'write' }],
+    [
+      { user: 'alice', level: 'read' },
+      { user: 'alice', level: 'write' },
+    ],
+  ])
+    assert.throws(() => smbAccessOf(bad), /smbAccess|SMB user name/);
+});
+
+test('removing an SMB user takes them off every share list, so a later account with the same name starts with nothing', () => {
+  const db = new Db(':memory:');
+  db.setShare({
+    dataset: 'tank/photos',
+    smb: true,
+    timeMachine: false,
+    nfs: false,
+    nfsClients: [],
+    smbAccess: [
+      { user: 'alice', level: 'write' },
+      { user: 'bob', level: 'read' },
+    ],
+  });
+  db.setShare({ dataset: 'tank/docs', smb: true, timeMachine: false, nfs: false, nfsClients: [], smbAccess: null });
+  assert.equal(db.dropSmbUserFromShares('alice'), true);
+  assert.deepEqual(db.share('tank/photos')?.smbAccess, [{ user: 'bob', level: 'read' }]);
+  assert.equal(db.share('tank/docs')?.smbAccess, null, 'a share from before lists stays as it is');
+  assert.equal(db.dropSmbUserFromShares('alice'), false);
+  db.close();
 });

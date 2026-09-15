@@ -363,7 +363,7 @@ export const verbs: { [V in Verb]: Handler<V> } = {
     return listShares(deps.run, deps.db);
   },
   async 'share.set'(args, deps) {
-    const a = only(args, ['dataset', 'smb', 'timeMachine', 'nfs', 'nfsClients']);
+    const a = only(args, ['dataset', 'smb', 'timeMachine', 'nfs', 'nfsClients', 'smbAccess']);
     return setShare(deps.run, deps.db, deps.shares, a as unknown as ShareSetArgs);
   },
   async 'share.remove'(args, deps) {

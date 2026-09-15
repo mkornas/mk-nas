@@ -10,8 +10,9 @@ Not a TrueNAS. A thin, opinionated layer over Ubuntu Server and OpenZFS.
 datasets with quotas and destroy them (name typed, children and shares
 refused, snapshots only when you say so), take snapshots, roll back, give a
 dataset an automatic snapshot policy that a timer keeps, and hand a dataset
-out over SMB (with Time Machine) and NFS; everyone with a drive account sets
-an SMB password on their account page. A dataset can be copied to another
+out over SMB (with Time Machine) and NFS; each SMB share has its own list of
+who may open it (read, or read and write), prefilled from the drive's grants,
+and everyone with a drive account sets an SMB password on their account page. A dataset can be copied to another
 ZFS machine over ssh on a schedule, incrementally and resumably, with the
 result on the Copies page. A failed disk is replaced from the Pools page and
 the pool rebuilds; a pool from another box or an earlier install is imported
