@@ -26,6 +26,9 @@ services:
       DRIVE_OIDC_CLIENT_ID: ${DRIVE_OIDC_CLIENT_ID:-}
       DRIVE_OIDC_CLIENT_SECRET: ${DRIVE_OIDC_CLIENT_SECRET:-}
       DRIVE_OIDC_NAME: ${DRIVE_OIDC_NAME:-Single sign-on}
+      # a monitor (mk-dashboard, a script) reads the pools' and disks' health at GET /api/nas/monitor with this token
+      # as a bearer (32+ characters, e.g. `openssl rand -hex 32`); unset, the route does not exist
+      DRIVE_NAS_MONITOR_TOKEN: ${DRIVE_NAS_MONITOR_TOKEN:-}
     volumes:
       # rslave: a dataset the agent mounts under /srv/locations later shows up inside the container too
       - type: bind
