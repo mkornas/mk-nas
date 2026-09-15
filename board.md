@@ -9,8 +9,6 @@ One card per line, ranked top-down inside each column. `#p0`..`#p3` = priority, 
 
 ## Now
 
-- [ ] **Updates from the box** the agent checks GitHub Releases daily, the Storage pages show the new version with its notes and an Install button that runs the same steps as install/upgrade.sh (settings backup, package, pinned drive) as a detached job; verified against a signing key on the box, never from a branch; Ubuntu's reboot-required shown too — docs/releasing.md 'Later' #p2 #updates
-
 ## Next
 
 - [ ] **Phase 0 — baseline** Ubuntu Server 24.04 on a small PC with Cockpit + 45Drives ZFS and file-sharing plugins; mk-drive on the datasets; two weeks of use; write notes/missing.md with what is still missing #p1 #phase0
@@ -21,10 +19,12 @@ One card per line, ranked top-down inside each column. `#p0`..`#p3` = priority, 
 - [ ] **HTTPS on the local network** so a phone can use the box's own name (nas.home.arpa or a name in your own domain) at home: iOS allows plain http only to IPs and .local names. Options to weigh: a real certificate for a name in a domain you own via Let's Encrypt DNS-01 (Caddy with the DNS provider's token; split DNS points the name at the box), or the drive's port behind Caddy with its internal CA (the phone must trust that root). Off until configured, in the drive's stack like the tunnel; http on 8810 stays for the LAN #p3 #network
 - [ ] *CLA for outside contributions** AGPL-3.0 with a commercial license needs the right to relicense contributions: a short CLA (or CLA Assistant) and a CONTRIBUTING.md in mk-nas and mk-drive before accepting the first outside PR #p2 #public
 - [ ] *Self-hosted runner on a public repo** vm.yml runs on a self-hosted KVM runner; before registering one, require approval for all fork PR workflows and restrict the runner to the vm workflow (a fork PR can otherwise run code on it) #p2 #ci
+- [ ] **Pilot box to 0.6.0** it runs 0.4.3, which has no updater: install/upgrade.sh mako@<box> 0.6.0 once it is back from maintenance; from then on it updates from its own System section #p1 #updates
 
 ## Later
 
 ## Done
+- [x] **Updates from the box** the agent checks GitHub Releases daily, the Storage pages show the new version with its notes and an Install button that runs the same steps as install/upgrade.sh (settings backup, package, pinned drive) as a detached job; verified against a signing key on the box, never from a branch; Ubuntu's reboot-required shown too — docs/releasing.md 'Later' #p2 #updates [[updates-from-the-box]]
 - [x] **Go public** mk-nas and mk-drive as public repos: current files cleaned of the author's network, hardware and accounts; AGPL-3.0; full history archived to private *-archive repos, main squashed to one commit, old tags and releases dropped, GHCR image public, first public release. Blocks Updates from the box (a public release to check) #p1 #public [[go-public]]
 - [x] **System card** a System section on the Storage pages: the agent's and the drive's versions and whether a newer release is out (with 'Updates from the box'); 'a restart is needed' when Ubuntu's own updates brought a new kernel (/var/run/reboot-required and its package list); Reboot and Shut down, confirmed by typing the box's name, the agent answering first and acting a few seconds later; before confirming, a warning listing running work (scrub, rebuild, replication send, SMART long test — they resume, but the person should know); a shutdown requested through the Cloudflare Tunnel says plainly that the box stays off until someone presses the power button. New agent verbs system.reboot and system.shutdown, audited #p2 #system [[system-card]]
 - [x] **Shares page: say when nobody can connect** a share lets in only the mk-nas-smb group, which exists once someone sets an SMB password on the Account page; until then the Shares page (and a dataset's share dialog) says 'Nobody can connect over SMB yet — set an SMB password under Settings → Account → Network access', and lists who can (users with a password), so a Linux login like the installer's user is not mistaken for an SMB account. Found on a first install #p2 #shares [[shares-page-say-when-nobody-can-connect]]
