@@ -47,6 +47,21 @@ was built for. A drive newer than its agent shows a banner on every page
 asking for the upgrade above, and the Storage pages may misbehave until
 then. An agent newer than its drive is fine: verbs are only ever added.
 
+## What 0.7.0 changes on a box
+
+- **Storage → Network → Reach the drive from outside**: paste a Cloudflare
+  Tunnel token and the box starts the tunnel; the card shows whether it is
+  connected, the public hostnames Cloudflare gives it and the last error.
+  New verbs `tunnel`, `tunnel.set` and `tunnel.remove`; the contract stays 2.
+  A token already in `/opt/mk-drive/.env` shows up there as it is. The page
+  refuses to change the tunnel when it is opened through that tunnel.
+- cloudflared's metrics and readiness now listen on `127.0.0.1:20241` only.
+  Before, they were open on every address of the box, the LAN included; the
+  tunnel container is recreated once by this upgrade when a token is set.
+- A tunnel token passed to the agent is redacted in its audit log.
+- Pins mk-drive 0.6.0, which has the tunnel card and shows the mk-nas
+  version in the sidebar.
+
 ## What 0.6.2 changes on a box
 
 - Pins mk-drive 0.5.0:
