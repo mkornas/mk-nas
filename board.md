@@ -9,9 +9,10 @@ One card per line, ranked top-down inside each column. `#p0`..`#p3` = priority, 
 
 ## Now
 
+- [ ] **Updates from the box** the agent checks GitHub Releases daily, the Storage pages show the new version with its notes and an Install button that runs the same steps as install/upgrade.sh (settings backup, package, pinned drive) as a detached job; verified against a signing key on the box, never from a branch; Ubuntu's reboot-required shown too — docs/releasing.md 'Later' #p2 #updates
+
 ## Next
 
-- [ ] **Updates from the box** the agent checks GitHub Releases daily, the Storage pages show the new version with its notes and an Install button that runs the same steps as install/upgrade.sh (settings backup, package, pinned drive) as a detached job; verified against a signing key on the box, never from a branch; Ubuntu's reboot-required shown too — docs/releasing.md 'Later' #p2 #updates
 - [ ] **Phase 0 — baseline** Ubuntu Server 24.04 on a small PC with Cockpit + 45Drives ZFS and file-sharing plugins; mk-drive on the datasets; two weeks of use; write notes/missing.md with what is still missing #p1 #phase0
 - [ ] **Later — apps** docker-compose stacks from a list (mk-drive, Immich), UPS, encryption keys, S3 backup target #p3 #later
 - [ ] **mk-dashboard on the NAS** add it to the /opt/mk-drive stack (port 8800, docker socket, /proc /sys /host mounts) once ghcr.io/mkornas/mk-dashboard is pullable without login (it answers 403 today); host vitals, containers, backups and push alerts come for free #p2 #phase5

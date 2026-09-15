@@ -39,6 +39,7 @@
 import { connect } from 'node:net';
 import { createInterface } from 'node:readline/promises';
 import type { Response, Verb } from '../../shared/types.ts';
+import { newer } from './updates.ts';
 
 const socket = process.env.MK_NAS_SOCKET || '/run/mk-nas.sock';
 const argv = process.argv.slice(2);
@@ -216,7 +217,9 @@ function print(verb: string, result: unknown): void {
         console.log(
           r.available
             ? `mk-nas ${r.latest.version} is out (mk-drive ${r.latest.drive}): mk-nas update install ${r.latest.version} — ${r.latest.url}`
-            : `up to date; the newest release is ${r.latest.version}${r.latest.signed ? '' : ' (not signed yet)'}`,
+            : newer(r.latest.version, r.current) && !r.latest.signed
+              ? `mk-nas ${r.latest.version} is out but not signed, so the box does not install it (install/upgrade.sh with UNSIGNED=1 can) — ${r.latest.url}`
+              : `up to date; the newest release is ${r.latest.version}`,
         );
       console.log(r.checkedAt ? `checked ${r.checkedAt.replace('T', ' ').slice(0, 16)}${r.error ? ` — failed: ${r.error}` : ''}` : 'never checked');
       if (r.run)
