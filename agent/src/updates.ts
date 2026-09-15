@@ -205,11 +205,19 @@ export async function download(fetchFn: Fetch, url: string, file: string, agent:
   return hash.digest('hex');
 }
 
-/** One install, step by step, each written to the run's row. Resolves with the finished run's message; throws with the reason. */
+/** One install, step by step, each written to the run's row. Resolves with the finished run's message; throws with the reason. The downloads go either way. */
 export async function installRelease(ctx: InstallContext, version: string, runId: number): Promise<string> {
+  const dir = join(ctx.cfg.dir, version);
+  try {
+    return await installSteps(ctx, version, runId, dir);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+async function installSteps(ctx: InstallContext, version: string, runId: number, dir: string): Promise<string> {
   const { run, db, cfg } = ctx;
   const step = (s: string) => db.stepUpdateRun(runId, s);
-  const dir = join(cfg.dir, version);
   await rm(dir, { recursive: true, force: true });
   await mkdir(dir, { recursive: true, mode: 0o700 });
 
@@ -268,6 +276,5 @@ export async function installRelease(ctx: InstallContext, version: string, runId
     if (Date.now() > until) throw new Error(`the package installed, but mk-nasd ${installed ?? '?'} is ${active ? 'running' : 'not running'}`);
     await new Promise((r) => setTimeout(r, 2000));
   }
-  await rm(dir, { recursive: true, force: true });
   return `mk-nas ${version} with mk-drive ${meta.drive}`;
 }

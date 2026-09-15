@@ -252,6 +252,7 @@ test('install refuses before touching the system: a tampered package, a wrong ke
       const r = s.db.startUpdateRun('0.6.0', process.pid);
       await assert.rejects(installRelease(s.ctx, '0.6.0', r.id), why);
       assert.ok(!s.calls.some((c) => c.includes('apt-get')), 'no package installed');
+      await assert.rejects(readFile(join(s.cfg.dir, '0.6.0', 'SHA256SUMS')), /ENOENT/, 'a failed install leaves no downloads behind');
       assert.equal(s.backups.length, 0);
     } finally {
       await s.done();
