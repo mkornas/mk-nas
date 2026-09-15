@@ -37,6 +37,9 @@ export type Verb =
   | 'power'
   | 'system.reboot'
   | 'system.shutdown'
+  | 'update'
+  | 'update.check'
+  | 'update.install'
   | 'network'
   | 'network.set'
   | 'network.confirm'
@@ -427,6 +430,47 @@ export interface PowerScheduled {
   at: string;
 }
 
+/** An mk-nas release as the box sees it on GitHub. */
+export interface Release {
+  version: string;
+  /** The mk-drive version it pins. */
+  drive: string;
+  contract: number;
+  /** The release notes, Markdown as written. */
+  notes: string;
+  publishedAt: string;
+  url: string;
+  /** The maintainer's signature is attached; the install checks it before anything else. */
+  signed: boolean;
+}
+
+/** One install of a release from the box, start to end. */
+export interface UpdateRun {
+  id: number;
+  version: string;
+  state: 'running' | 'done' | 'failed';
+  /** What it is doing now, or what it did last: downloading, verifying, backing up, installing, starting the drive. */
+  step: string;
+  startedAt: string;
+  finishedAt: string | null;
+  message: string | null;
+}
+
+export interface Update {
+  /** The agent's version and the drive version it pins. */
+  current: string;
+  drive: string;
+  /** The newest release at the last check; null before the first one. */
+  latest: Release | null;
+  checkedAt: string | null;
+  /** Why the last check failed (no network, GitHub refused); the previous `latest` stays. */
+  error: string | null;
+  /** `latest` is newer than `current` and signed. */
+  available: boolean;
+  /** The newest install run, running or not. */
+  run: UpdateRun | null;
+}
+
 export interface NetInterface {
   name: string;
   mac: string | null;
@@ -545,6 +589,12 @@ export interface Verbs {
   'system.reboot': { args: { confirm: string }; result: PowerScheduled };
   /** `confirm` = the box's hostname, typed. Answers, then powers off a few seconds later; only the power button brings it back. */
   'system.shutdown': { args: { confirm: string }; result: PowerScheduled };
+  /** What is installed, the newest release at the last check (the timer checks daily), and the newest install run. */
+  update: { args: Record<string, never>; result: Update };
+  /** Asks GitHub now. */
+  'update.check': { args: Record<string, never>; result: Update };
+  /** Starts installing `version`, which must be the newest checked release, newer than this one and signed; `update` follows it. */
+  'update.install': { args: { version: string }; result: Update };
   network: { args: Record<string, never>; result: Network };
   /** The hostname takes effect at once. An interface change is applied with a revert: call network.confirm from the new address before `pending.expiresAt`, or it goes back. */
   'network.set': { args: NetworkSetArgs; result: Network };

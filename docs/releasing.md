@@ -2,7 +2,8 @@
 
 A box runs a **named pair**: one mk-nas release and the one mk-drive
 version it pins. Nothing on a box follows a branch, and nothing updates by
-itself — an update is one command from a laptop.
+itself — an update is the Install button on the box (0.6.0 and newer,
+`docs/updates.md`) or one command from another machine.
 
 ## The pieces
 
@@ -39,8 +40,13 @@ new shape then asks for the upgrade).
 
 ## Updating a box
 
-From a laptop with this repository and `gh` signed in (the box needs no
-GitHub or registry login):
+On the box itself (0.6.0 and newer): Storage → Overview → System shows a
+newer signed release with its notes and **Install**; `mk-nas update install
+X.Y.Z` over ssh does the same. Rolling back to an older release is only
+possible from another machine.
+
+From another machine with this repository and `gh` signed in (the box
+needs no GitHub or registry login):
 
 ```
 make upgrade HOST=nasadmin@nas.local                 # the newest release
@@ -73,8 +79,13 @@ git checkout v0.4.2 && make iso && git checkout main
 
 A release does not carry the ISO: at 4 GB it is over GitHub's asset limit.
 
-## Later
+## Signing
 
-Checking for a new release from the box itself, showing it on the Storage
-pages with the release notes, and installing it from there (signed, never
-from a branch) — the card "Updates from the box" on the board.
+A box installs only a signed release (`docs/updates.md`). `make release`
+signs once the workflow has published: `install/sign-release.sh X.Y.Z` with
+the key at `~/.config/mk-nas/release-signing-key` (or
+`MK_NAS_SIGNING_KEY`), and refuses to start without it. Back the key up;
+losing it means a new one (`install/sign-release.sh --new-key`) and one
+more release signed the old way. When the workflow outlives the wait,
+sign by hand afterwards with the same script. `install/upgrade.sh` checks
+the signature too and refuses an unsigned release unless `UNSIGNED=1`.

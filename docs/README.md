@@ -17,6 +17,7 @@ Proposed decisions live in `PLAN.md` §2 until they are confirmed.
 | `events.md` | the `zpool events` tail: polled, in memory, what matters |
 | `network.md` | hostname and address, the netplan file, the timed revert |
 | `vitals.md` | the box at a glance from /proc, nothing on disk |
+| `updates.md` | updates from the box: a daily check, releases signed off CI, a verified install in its own unit |
 | `power.md` | reboot and shut down: the typed hostname, a timer a few seconds out, what is running first |
 | `first-install.md` | the hands-on guide: stick, BIOS, install, pool, datasets, shares, settings backup, living with it |
 | `config-backup.md` | the box's settings kept in a dataset, daily; one restore after a dead OS disk |

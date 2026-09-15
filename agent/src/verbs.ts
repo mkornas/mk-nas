@@ -27,6 +27,7 @@ import { byIdMap, getSmart, listDisks, LSBLK_ARGV, parseLsblk, pickId, smartctlV
 import { readBackup, restoreBackup, runBackup, setBackup, type BackupConfig } from './backup.ts';
 import { BadArgs, datasetName, diskId, only, optional, poolName } from './names.ts';
 import { readPower, schedulePower } from './power.ts';
+import { checkForUpdate, installable, readUpdate, type Fetch, type UpdateConfig } from './updates.ts';
 import { confirmNetwork, readNetwork, revertIfExpired, setNetwork, type NetConfig } from './network.ts';
 import { must, type Runner } from './run.ts';
 import { ensureKey, hostName, portNumber, replicate, setReplication, testTarget, userName, withRunning, type ReplConfig } from './replication.ts';
@@ -70,7 +71,25 @@ export interface Deps {
   byIdDir?: string;
   /** /run/reboot-required, moved in tests. */
   rebootRequired?: string;
+  /** Absent in tests that do not care. */
+  updates?: UpdateConfig;
+  /** GitHub, for the update check; a fake in tests. */
+  fetch?: Fetch;
 }
+
+const updatesOf = (deps: Deps): UpdateConfig => {
+  if (!deps.updates) throw new Error('updates are not configured');
+  return deps.updates;
+};
+
+const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 function count(v: unknown, what: string): number {
   if (typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v > 1000) throw new BadArgs(`${what} must be a whole number from 0 to 1000`);
@@ -194,6 +213,30 @@ export const verbs: { [V in Verb]: Handler<V> } = {
   async 'system.shutdown'(args, deps) {
     const a = only(args, ['confirm']);
     return schedulePower(deps.run, 'shutdown', a.confirm);
+  },
+  async update(args, deps) {
+    only(args, []);
+    return readUpdate(deps.db, updatesOf(deps), deps.version, alive);
+  },
+  async 'update.check'(args, deps) {
+    only(args, []);
+    await checkForUpdate(deps.fetch ?? fetch, deps.db, updatesOf(deps), deps.version);
+    return readUpdate(deps.db, updatesOf(deps), deps.version, alive);
+  },
+  async 'update.install'(args, deps) {
+    const a = only(args, ['version']);
+    deps.db.failDeadUpdateRuns(alive);
+    const version = installable(deps.db, deps.version, a.version);
+    // its own unit (detach.ts): the package it installs restarts this agent
+    deps.spawn([process.execPath, new URL('./update.ts', import.meta.url).pathname, version]);
+    for (let i = 0; i < 40; i++) {
+      await new Promise((r) => setTimeout(r, 50));
+      const run = deps.db.updateRun();
+      if (run?.version === version && Date.now() - Date.parse(run.startedAt) < 5000) break;
+    }
+    const u = await readUpdate(deps.db, updatesOf(deps), deps.version, alive);
+    if (u.run?.version !== version || Date.now() - Date.parse(u.run.startedAt) > 5000) throw new Error('the update runner did not start');
+    return u;
   },
   async network(args, deps) {
     only(args, []);

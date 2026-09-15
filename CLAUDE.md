@@ -28,8 +28,10 @@ to `docs/` as one file each.
   element, `src/run.ts` the only way a command runs (execFile, no shell),
   `src/write.ts` the verbs that change something (look before leaping,
   `confirm` = the name typed for anything destructive), `src/db.ts` the
-  SQLite for what ZFS cannot hold (policies), `src/policy.ts` + `src/tick.ts`
-  the snapshot timer (pure planner, run by `mk-nas-snapshot.timer`),
+  SQLite for what ZFS cannot hold (policies), `src/updates.ts` +
+  `src/update.ts` the updates from the box (a daily check, a signed release
+  installed by its own process, `docs/updates.md`), `src/policy.ts` +
+  `src/tick.ts` the snapshot timer (pure planner, run by `mk-nas-snapshot.timer`),
   `src/shares.ts` the SMB/NFS shares and SMB users (smb.conf and the exports
   file written whole from the db on every change, then reloaded; a password
   only ever travels on stdin and is redacted in the audit), `src/replication.ts`

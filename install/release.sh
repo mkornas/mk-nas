@@ -3,13 +3,15 @@
 #
 # Checks that the mk-drive version pinned in install/mk-drive/version is released (its image exists) and speaks a
 # NAS contract this agent knows, sets agent/package.json, commits, tags vX.Y.Z and pushes. The release workflow
-# tests, builds the .deb and publishes the GitHub Release. Needs gh, signed in with access to both repos.
+# tests, builds the .deb and publishes the GitHub Release; then install/sign-release.sh signs it with the release key,
+# without which no box installs it. Needs gh, signed in, and the key (~/.config/mk-nas/release-signing-key).
 set -euo pipefail
 v=${1:?usage: install/release.sh X.Y.Z}
 [[ $v =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "release.sh: $v is not X.Y.Z" >&2; exit 2; }
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 die() { echo "release.sh: $*" >&2; exit 1; }
 [[ $(git branch --show-current) == main ]] || die "not on main"
+[[ -f ${MK_NAS_SIGNING_KEY:-$HOME/.config/mk-nas/release-signing-key} ]] || die "no release signing key (install/sign-release.sh --new-key makes one)"
 [[ -z $(git status --porcelain) ]] || die "the tree has changes; commit or stash them first"
 git fetch -q origin --tags
 [[ $(git rev-parse HEAD) == $(git rev-parse origin/main) ]] || die "main is not the same as origin/main; pull or push first"
@@ -28,5 +30,12 @@ git add agent/package.json agent/package-lock.json
 git commit -q -s -m "mk-nas $v (pins mk-drive $drive)"
 git tag -a "v$v" -m "mk-nas $v, pins mk-drive $drive"
 git push -q origin main "v$v"
-echo "pushed v$v (mk-drive $drive, contract $agent_contract). The release workflow runs now:"
-echo "  gh run watch \$(gh run list --workflow release.yml --limit 1 --json databaseId -q '.[0].databaseId')"
+echo "pushed v$v (mk-drive $drive, contract $agent_contract); waiting for the release workflow, then signing"
+run=
+for _ in $(seq 1 30); do
+  run=$(gh run list --workflow release.yml --branch "v$v" --limit 1 --json databaseId -q '.[0].databaseId' 2>/dev/null) && [[ -n $run ]] && break
+  sleep 5
+done
+[[ -n $run ]] || die "no release workflow run for v$v; when it is done: install/sign-release.sh $v"
+gh run watch "$run" --exit-status >/dev/null || die "the release workflow failed: gh run view $run --log-failed"
+install/sign-release.sh "$v"

@@ -8,7 +8,7 @@
  * if any failed.
  */
 import { createAudit } from './audit.ts';
-import { backupConfig, config, netConfig } from './config.ts';
+import { backupConfig, config, netConfig, updateConfig } from './config.ts';
 import { backupDue, runBackup } from './backup.ts';
 import { Db } from './db.ts';
 import { byIdMap, longTestDue, LSBLK_ARGV, parseLsblk, pickId, readSmart, smartQuietArgv } from './disks.ts';
@@ -16,6 +16,7 @@ import { plan, scrubDue } from './policy.ts';
 import { revertIfExpired } from './network.ts';
 import { noteScan, reconcileScans } from './scans.ts';
 import { must, run } from './run.ts';
+import { checkDue, checkForUpdate } from './updates.ts';
 import { getPool, listPools, listSnapshots } from './zfs.ts';
 
 const audit = createAudit(config.audit);
@@ -87,6 +88,12 @@ try {
       console.error(`settings backup failed: ${(e as Error).message}`);
       await audit({ ts: now.toISOString(), verb: 'tick.backup', args: {}, ok: false, ms: 0, error: (e as Error).message });
     }
+  }
+  // once a day: is there a newer release (the drive shows it; nothing installs by itself)
+  if (checkDue(db, now.getTime())) {
+    await checkForUpdate(fetch, db, updateConfig(config), config.version, now.getTime());
+    const c = db.updateCheck();
+    console.log(c?.error ? `update check failed: ${c.error}` : `newest release: ${c?.latest?.version ?? 'none'}`);
   }
   const [devices, ids] = await Promise.all([parseLsblk(await must(run, LSBLK_ARGV)), byIdMap()]);
   for (const d of devices) {

@@ -17,7 +17,7 @@ host=${1:?usage: install/upgrade.sh [-p port] user@host [X.Y.Z]}
 want=${2:-}
 say() { printf '\033[1m==> %s\033[0m\n' "$*"; }
 die() { echo "upgrade.sh: $*" >&2; exit 1; }
-for t in gh ssh scp sha256sum; do command -v $t >/dev/null || die "needs $t"; done
+for t in gh ssh scp sha256sum ssh-keygen; do command -v $t >/dev/null || die "needs $t"; done
 ssh_opts=(-p "$port" -o ConnectTimeout=10)
 scp_opts=(-P "$port" -o ConnectTimeout=10)
 
@@ -30,6 +30,15 @@ trap 'rm -rf "$tmp"' EXIT
 say "mk-nas $v"
 mkdir -p "$tmp/nas" "$tmp/drive"
 gh release download "$tag" -R mkornas/mk-nas -D "$tmp/nas" -p "mk-nas_${v}_amd64.deb" -p release.json -p SHA256SUMS
+# the maintainer's signature, checked against the key in this checkout, the same one every package ships
+if gh release view "$tag" -R mkornas/mk-nas --json assets -q '.assets[].name' | grep -qx SHA256SUMS.sig; then
+  gh release download "$tag" -R mkornas/mk-nas -D "$tmp/nas" -p SHA256SUMS.sig
+  ssh-keygen -Y verify -f "$(dirname "${BASH_SOURCE[0]}")/release-signers" -I releases@mk-nas -n mk-nas-release -s "$tmp/nas/SHA256SUMS.sig" < "$tmp/nas/SHA256SUMS" >/dev/null ||
+    die "the signature of mk-nas $v does not verify"
+  say "signature verified"
+else
+  [[ ${UNSIGNED:-} == 1 ]] || die "mk-nas $v is not signed (yet: install/sign-release.sh $v); UNSIGNED=1 installs it anyway"
+fi
 (cd "$tmp/nas" && sha256sum -c --quiet SHA256SUMS) || die "checksum mismatch in the mk-nas $v release"
 drive=$(grep -o '"drive": *"[^"]*"' "$tmp/nas/release.json" | grep -o '[0-9][0-9.]*')
 [[ -n $drive ]] || die "release.json names no drive version"
@@ -43,6 +52,8 @@ if [[ $have_drive != yes ]]; then
   say "mk-drive $drive"
   gh release download "v$drive" -R mkornas/mk-drive -D "$tmp/drive" -p "mk-drive-$drive.tgz" -p SHA256SUMS
   (cd "$tmp/drive" && sha256sum -c --quiet SHA256SUMS) || die "checksum mismatch in the mk-drive $drive release"
+  image_sha=$(grep -o '"driveImageSha256": *"[0-9a-f]*"' "$tmp/nas/release.json" | grep -o '[0-9a-f]\{64\}' || true)
+  [[ -z $image_sha || $image_sha == $(sha256sum "$tmp/drive/mk-drive-$drive.tgz" | cut -d' ' -f1) ]] || die "mk-drive-$drive.tgz does not match the signed mk-nas $v release"
   files+=("$tmp/drive/mk-drive-$drive.tgz")
 fi
 

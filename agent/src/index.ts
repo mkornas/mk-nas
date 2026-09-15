@@ -5,7 +5,7 @@
 import { spawn } from 'node:child_process';
 import { hostname } from 'node:os';
 import { createAudit } from './audit.ts';
-import { backupConfig, config, netConfig } from './config.ts';
+import { backupConfig, config, netConfig, updateConfig } from './config.ts';
 import { Db } from './db.ts';
 import { detachedArgv } from './detach.ts';
 import { EventLog } from './events.ts';
@@ -39,6 +39,7 @@ const server = await listen({
     vitals,
     network: netConfig(config),
     backup: backupConfig(config),
+    updates: updateConfig(config),
     spawn: (argv) => {
       const env: Record<string, string> = {
         PATH: '/usr/sbin:/usr/bin:/sbin:/bin',

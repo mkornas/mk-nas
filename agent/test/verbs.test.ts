@@ -279,3 +279,43 @@ test('system.reboot and system.shutdown: the typed hostname, one timer a few sec
   assert.match(!res.ok ? res.error.message : '', /already on its way/);
   assert.equal(f.calls.length, 1);
 });
+
+test('update.install: the runner is started detached for exactly the checked release; anything else is refused before it', async () => {
+  const f = fake({});
+  const spawned: string[][] = [];
+  const db = new Db(':memory:');
+  const UPD = {
+    repo: 'o/mk-nas',
+    driveRepo: 'o/mk-drive',
+    driveImage: 'ghcr.io/o/mk-drive',
+    dir: '/tmp/never-written-updates',
+    signers: '/tmp/never-written-signers',
+    driveImageFile: '/tmp/never-written.tgz',
+    loadImage: '/bin/true',
+    pinnedDriveFile: '/tmp/never-written-version',
+    agentPackage: '/tmp/never-written-package.json',
+  };
+  const d = deps(f.run, {
+    db,
+    updates: UPD,
+    spawn: (argv) => {
+      spawned.push(argv);
+      db.startUpdateRun(argv.at(-1)!, process.pid);
+    },
+  });
+  let res = await handle({ id: 1, verb: 'update.install', args: { version: '0.9.0' } }, d, audit);
+  assert.equal(!res.ok && res.error.code, 'bad-args');
+  db.recordUpdateCheck({ version: '0.9.0', drive: '0.4.0', contract: 2, notes: '', publishedAt: '', url: '', signed: true }, null);
+  res = await handle({ id: 2, verb: 'update.install', args: { version: '0.9.0', extra: 1 } }, d, audit);
+  assert.equal(!res.ok && res.error.code, 'bad-args', 'unknown keys are refused');
+  res = await handle({ id: 3, verb: 'update.install', args: { version: '0.9.0' } }, d, audit);
+  assert.equal(res.ok, true, JSON.stringify(res));
+  assert.equal(spawned.length, 1);
+  assert.match(spawned[0][1], /src\/update\.ts$/);
+  assert.equal(spawned[0][2], '0.9.0');
+  const u = res.ok ? (res.result as { run: { state: string; version: string }; available: boolean }) : null;
+  assert.deepEqual([u?.run.state, u?.run.version, u?.available], ['running', '0.9.0', true]);
+  res = await handle({ id: 4, verb: 'update.install', args: { version: '0.9.0' } }, d, audit);
+  assert.match(!res.ok ? res.error.message : '', /already running/);
+  assert.equal(spawned.length, 1);
+});

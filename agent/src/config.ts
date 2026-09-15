@@ -35,6 +35,11 @@ export interface Config {
   /** The drive's .env and database, for the settings backup. */
   driveEnv: string;
   driveDb: string;
+  /** Updates: the GitHub repositories releases come from, where an install downloads to, the release key the package ships. */
+  updatesRepo: string;
+  driveRepo: string;
+  updatesDir: string;
+  releaseSigners: string;
 }
 
 export const config: Config = {
@@ -59,7 +64,24 @@ export const config: Config = {
   netplanPending: process.env.MK_NAS_NETPLAN_PENDING || '/var/lib/mk-nas/netplan-pending.json',
   driveEnv: process.env.MK_NAS_DRIVE_ENV || '/opt/mk-drive/.env',
   driveDb: process.env.MK_NAS_DRIVE_DB || '/opt/mk-drive/data/mk-drive.db',
+  updatesRepo: process.env.MK_NAS_UPDATES_REPO || 'mkornas/mk-nas',
+  driveRepo: process.env.MK_NAS_DRIVE_REPO || 'mkornas/mk-drive',
+  updatesDir: process.env.MK_NAS_UPDATES_DIR || '/var/lib/mk-nas/updates',
+  releaseSigners: process.env.MK_NAS_RELEASE_SIGNERS || '/opt/mk-nas/install/release-signers',
 };
+
+/** Where releases come from and go to, as the agent, the tick and the install runner see it. */
+export const updateConfig = (c: Config) => ({
+  repo: c.updatesRepo,
+  driveRepo: c.driveRepo,
+  driveImage: 'ghcr.io/mkornas/mk-drive',
+  dir: c.updatesDir,
+  signers: c.releaseSigners,
+  driveImageFile: '/opt/mk-nas/mk-drive-image.tgz',
+  loadImage: '/opt/mk-nas/install/load-image.sh',
+  pinnedDriveFile: '/opt/mk-nas/install/mk-drive/version',
+  agentPackage: new URL('../package.json', import.meta.url).pathname,
+});
 
 /** What the settings backup copies, minus the runner that finishes a restore. */
 export const backupConfig = (c: Config) => ({

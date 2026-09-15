@@ -34,22 +34,28 @@ jobs:
         working-directory: agent
       - run: make deb
       - name: Assets and notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p out
           cp install/out/mk-nas_${VERSION}_amd64.deb out/
-          printf '{"agent":"%s","drive":"%s","contract":%s}\n' "$VERSION" "$DRIVE" "$CONTRACT" > out/release.json
+          # the pinned drive image's checksum, from its own release: the maintainer's signature over SHA256SUMS then covers it too
+          gh release download "v$DRIVE" -R mkornas/mk-drive -D drive -p SHA256SUMS
+          image_sha=$(awk -v f="mk-drive-$DRIVE.tgz" '$2 == f {print $1}' drive/SHA256SUMS)
+          [ -n "$image_sha" ] || { echo "::error::mk-drive v$DRIVE lists no mk-drive-$DRIVE.tgz"; exit 1; }
+          printf '{"agent":"%s","drive":"%s","contract":%s,"driveImageSha256":"%s"}\n' "$VERSION" "$DRIVE" "$CONTRACT" "$image_sha" > out/release.json
           (cd out && sha256sum mk-nas_${VERSION}_amd64.deb release.json > SHA256SUMS)
           prev=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)
           {
             echo "mk-nasd $VERSION, verb contract $CONTRACT. Pins **mk-drive $DRIVE** (\`ghcr.io/mkornas/mk-drive:$DRIVE\`)."
             echo
-            echo "Put it on a box from a laptop with this repo and \`gh\` signed in:"
+            echo "A box on 0.6.0 or newer shows this release under Storage → Overview → System and installs it from there, once it is signed. From another machine with this repo:"
             echo
             echo '```'
             echo "install/upgrade.sh <user>@<box>.local $VERSION"
             echo '```'
             echo
-            echo "It takes a settings backup, installs the package, brings the pinned drive up and checks both answer. By hand: \`sudo apt install ./mk-nas_${VERSION}_amd64.deb\` (docs/upgrading.md)."
+            echo "Both check the signature, take a settings backup, install the package, bring the pinned drive up and check both answer. By hand: \`sudo apt install ./mk-nas_${VERSION}_amd64.deb\` (docs/upgrading.md)."
             echo
             echo "## Changes${prev:+ since $prev}"
             git log --no-merges --format='- %s' ${prev:+$prev..}"$GITHUB_REF_NAME" -- agent shared install .github | head -200

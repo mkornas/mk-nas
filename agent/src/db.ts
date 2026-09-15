@@ -5,7 +5,19 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { Job, Policy, PolicySetArgs, Replication, ReplicationSchedule, ScrubInterval, ScrubPolicy, Share, SmbUser } from '../../shared/types.ts';
+import type {
+  Job,
+  Policy,
+  PolicySetArgs,
+  Release,
+  Replication,
+  ReplicationSchedule,
+  ScrubInterval,
+  ScrubPolicy,
+  Share,
+  SmbUser,
+  UpdateRun,
+} from '../../shared/types.ts';
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS policies (
@@ -66,6 +78,22 @@ const SCHEMA = [
     pid INTEGER
   )`,
   `CREATE INDEX IF NOT EXISTS jobs_repl ON jobs(replication_id, started_at)`,
+  `CREATE TABLE IF NOT EXISTS update_check (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    checked_at INTEGER NOT NULL,
+    latest TEXT,
+    error TEXT
+  )`,
+  `CREATE TABLE IF NOT EXISTS update_runs (
+    id INTEGER PRIMARY KEY,
+    version TEXT NOT NULL,
+    state TEXT NOT NULL,
+    step TEXT NOT NULL,
+    started_at INTEGER NOT NULL,
+    finished_at INTEGER,
+    message TEXT,
+    pid INTEGER
+  )`,
   `CREATE TABLE IF NOT EXISTS smb_users (
     name TEXT PRIMARY KEY,
     has_password INTEGER NOT NULL DEFAULT 0,
@@ -339,6 +367,61 @@ export class Db {
     return n;
   }
 
+  /** The last check for a release: when, what it found (kept when a later check fails), and why it failed. */
+  updateCheck(): { checkedAt: string; latest: Release | null; error: string | null } | null {
+    const row = this.db.prepare('SELECT * FROM update_check WHERE id = 1').get() as
+      { checked_at: number; latest: string | null; error: string | null } | undefined;
+    return row
+      ? { checkedAt: new Date(row.checked_at).toISOString(), latest: row.latest ? (JSON.parse(row.latest) as Release) : null, error: row.error }
+      : null;
+  }
+
+  /** A found release replaces the last one; a failed check keeps it and writes down why. */
+  recordUpdateCheck(latest: Release | null, error: string | null, now = Date.now()): void {
+    this.db
+      .prepare(
+        `INSERT INTO update_check (id, checked_at, latest, error) VALUES (1, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET checked_at = excluded.checked_at, latest = COALESCE(excluded.latest, update_check.latest), error = excluded.error`,
+      )
+      .run(now, latest ? JSON.stringify(latest) : null, error);
+  }
+
+  startUpdateRun(version: string, pid: number, now = Date.now()): UpdateRun {
+    const res = this.db
+      .prepare(`INSERT INTO update_runs (version, state, step, started_at, pid) VALUES (?, 'running', 'starting', ?, ?)`)
+      .run(version, now, pid);
+    return this.updateRun(Number(res.lastInsertRowid))!;
+  }
+
+  updateRun(id?: number): UpdateRun | null {
+    const row = (id === undefined
+      ? this.db.prepare('SELECT * FROM update_runs ORDER BY started_at DESC, id DESC LIMIT 1').get()
+      : this.db.prepare('SELECT * FROM update_runs WHERE id = ?').get(id)) as unknown as UpdateRunRow | undefined;
+    return row ? toUpdateRun(row) : null;
+  }
+
+  stepUpdateRun(id: number, step: string): void {
+    this.db.prepare(`UPDATE update_runs SET step = ? WHERE id = ?`).run(step, id);
+  }
+
+  finishUpdateRun(id: number, state: 'done' | 'failed', message: string, now = Date.now()): UpdateRun {
+    this.db.prepare(`UPDATE update_runs SET state = ?, message = ?, finished_at = ? WHERE id = ?`).run(state, message, now, id);
+    return this.updateRun(id)!;
+  }
+
+  /** A run whose process is gone did not finish: the box restarted, or the runner was killed. */
+  failDeadUpdateRuns(alive: (pid: number) => boolean, now = Date.now()): number {
+    let n = 0;
+    for (const row of this.db.prepare(`SELECT id, pid FROM update_runs WHERE state = 'running'`).all() as unknown as { id: number; pid: number | null }[]) {
+      if (row.pid !== null && alive(row.pid)) continue;
+      this.db
+        .prepare(`UPDATE update_runs SET state = 'failed', finished_at = ?, message = ? WHERE id = ?`)
+        .run(now, 'interrupted: the runner stopped before it finished', row.id);
+      n++;
+    }
+    return n;
+  }
+
   progressJob(id: number, bytes: number, total: number | null, message?: string): void {
     const progress = total ? Math.min(100, Math.round((bytes / total) * 1000) / 10) : null;
     if (message !== undefined)
@@ -404,6 +487,27 @@ const toReplication = (r: ReplicationRow): StoredReplication => ({
   lastMessage: r.last_message,
   createdAt: new Date(r.created_at).toISOString(),
 });
+interface UpdateRunRow {
+  id: number;
+  version: string;
+  state: string;
+  step: string;
+  started_at: number;
+  finished_at: number | null;
+  message: string | null;
+  pid: number | null;
+}
+
+const toUpdateRun = (r: UpdateRunRow): UpdateRun => ({
+  id: r.id,
+  version: r.version,
+  state: r.state as UpdateRun['state'],
+  step: r.step,
+  startedAt: new Date(r.started_at).toISOString(),
+  finishedAt: r.finished_at ? new Date(r.finished_at).toISOString() : null,
+  message: r.message,
+});
+
 const toJob = (r: JobRow): Job => ({
   id: r.id,
   kind: r.kind as Job['kind'],

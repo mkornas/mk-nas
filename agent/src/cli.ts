@@ -11,6 +11,7 @@
  *   mk-nas events [--all]                    what ZFS reported, newest first (--all: the routine ones too)
  *   mk-nas system                            the box at a glance: load, cpu, memory, network and disk rates, temperatures
  *   mk-nas backup | backup set <dataset>|off | backup now | backup restore <dataset>   (asks you to type the dataset)
+ *   mk-nas update | update check | update install <version>   the newest release, and installing it (signed ones only)
  *   mk-nas network | network hostname <name> | network keep
  *   mk-nas network set <iface> --dhcp | --address 192.168.1.10/24 [--gateway 192.168.1.1] [--dns 1.1.1.1,9.9.9.9] [--revert 120]
  *                                            (an address change reverts after --revert seconds unless `network keep` is run from the new address)
@@ -205,6 +206,23 @@ function print(verb: string, result: unknown): void {
         console.log(`${d.dev}${known?.pool ? ` (${known.pool})` : ''}: ${human(d.read)}/s read, ${human(d.write)}/s write, ${d.busy}% busy`);
       }
       if (n.temps.length) console.log(n.temps.map((t: any) => `${t.label ?? t.sensor} ${t.celsius} °C`).join('  '));
+      return;
+    }
+    case 'update':
+    case 'update.check':
+    case 'update.install': {
+      console.log(`mk-nas ${r.current} (mk-drive ${r.drive})`);
+      if (r.latest)
+        console.log(
+          r.available
+            ? `mk-nas ${r.latest.version} is out (mk-drive ${r.latest.drive}): mk-nas update install ${r.latest.version} — ${r.latest.url}`
+            : `up to date; the newest release is ${r.latest.version}${r.latest.signed ? '' : ' (not signed yet)'}`,
+        );
+      console.log(r.checkedAt ? `checked ${r.checkedAt.replace('T', ' ').slice(0, 16)}${r.error ? ` — failed: ${r.error}` : ''}` : 'never checked');
+      if (r.run)
+        console.log(
+          `install of ${r.run.version}: ${r.run.state}${r.run.state === 'running' ? ` (${r.run.step})` : ''}${r.run.message ? ` — ${r.run.message}` : ''}`,
+        );
       return;
     }
     case 'backup':
@@ -483,6 +501,7 @@ const COMMANDS = [
   'user',
   'replication',
   'network',
+  'update',
   'call',
 ];
 
@@ -561,6 +580,8 @@ async function complete(words: string[]): Promise<string[]> {
       return [];
     case 'events':
       return n === 0 ? ['--all'] : [];
+    case 'update':
+      return n === 0 ? ['check', 'install'] : n === 1 && rest[0] === 'install' ? names('update', (r) => (r.available ? [r.latest.version] : [])) : [];
     case 'call':
       return n === 0 ? names('version', () => []).then(() => []) : [];
     default:
@@ -593,6 +614,14 @@ async function main(): Promise<void> {
     case 'jobs':
       verb = 'jobs';
       if (rest[0]) args = { pool: rest[0] };
+      break;
+    case 'update':
+      if (!rest[0]) verb = 'update';
+      else if (rest[0] === 'check') verb = 'update.check';
+      else if (rest[0] === 'install' && rest[1]) {
+        verb = 'update.install';
+        args = { version: rest[1] };
+      } else usage('update | update check | update install <version>');
       break;
     case 'events':
       verb = 'events';

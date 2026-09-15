@@ -34,7 +34,7 @@ cp -a "$repo/agent" "$repo/shared" "$stage/opt/mk-nas/"
 rm -rf "$stage/opt/mk-nas/agent/node_modules" "$stage/opt/mk-nas/agent/test" "$stage/opt/mk-nas/agent/"*.service "$stage/opt/mk-nas/agent/"*.timer
 tar -xJf "$tarball" -C "$stage/opt/mk-nas/node" --strip-components=1
 rm -rf "$stage/opt/mk-nas/node/include" "$stage/opt/mk-nas/node/share" "$stage/opt/mk-nas/node/lib/node_modules/npm/docs"
-cp "$here/load-image.sh" "$here/stack-up.sh" "$stage/opt/mk-nas/install/"
+cp "$here/load-image.sh" "$here/stack-up.sh" "$here/release-signers" "$stage/opt/mk-nas/install/"
 drive_version=$(tr -d '[:space:]' < "$here/mk-drive/version")
 [[ $drive_version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "deb.sh: install/mk-drive/version must be X.Y.Z (found '$drive_version')" >&2; exit 1; }
 sed "s/@DRIVE_VERSION@/$drive_version/" "$here/mk-drive/docker-compose.yml" > "$stage/opt/mk-nas/install/mk-drive/docker-compose.yml"
