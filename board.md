@@ -9,8 +9,6 @@ One card per line, ranked top-down inside each column. `#p0`..`#p3` = priority, 
 
 ## Now
 
-- [ ] *Tell me when something is wrong** the box knows about a degraded pool, a failing or overheating disk, a failed scrub, a failed settings backup and a waiting update, but nothing reaches the owner unless they open the page: a small alert engine in the agent (one event per condition, remembered so it does not repeat, cleared when the condition goes) and delivery the drive can use — phone push through mk-drive first, email as an option; quiet by default, no chatter #p1 #alerts [[tell-me-when-something-is-wrong-the-box-knows-about-a-degrad]]
-
 ## Next
 
 - [ ] **Phase 0 — baseline** Ubuntu Server 24.04 on a small PC with Cockpit + 45Drives ZFS and file-sharing plugins; mk-drive on the datasets; two weeks of use; write notes/missing.md with what is still missing #p1 #phase0
@@ -30,6 +28,7 @@ One card per line, ranked top-down inside each column. `#p0`..`#p3` = priority, 
 ## Later
 
 ## Done
+- [x] *Tell me when something is wrong** the box knows about a degraded pool, a failing or overheating disk, a failed scrub, a failed settings backup and a waiting update, but nothing reaches the owner unless they open the page: a small alert engine in the agent (one event per condition, remembered so it does not repeat, cleared when the condition goes) and delivery the drive can use — phone push through mk-drive first, email as an option; quiet by default, no chatter #p1 #alerts [[tell-me-when-something-is-wrong-the-box-knows-about-a-degrad]]
 - [x] **Pilot box to 0.6.0** done long ago (box on 0.8.0) [[pilot-box-to-0-6-0]]
 - [x] *Security: CI and packaging hardening** persist-credentials false, actions pinned by SHA, permissions on test.yml, vm.yml dispatch only from main and an isolated runner, chmod -R go-w in deb.sh, gpgv the Ubuntu SHA256SUMS, cloudflared by digest, cap_drop/no-new-privileges, re-validate DB rows in replicate, upgrade.sh UNSIGNED hint removed #p2 #security [[security-ci-and-packaging-hardening-persist-credentials-fals]]
 - [x] *Security: NFS open to every private network** the default exports rw to 10/8, 172.16/12, 192.168/16 with no auth: no default clients, ask for them #p2 #security [[security-nfs-open-to-every-private-network-the-default-expor]]
