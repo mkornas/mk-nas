@@ -51,7 +51,7 @@ was built for. A drive newer than its agent shows a banner on every page
 asking for the upgrade above, and the Storage pages may misbehave until
 then. An agent newer than its drive is fine: verbs are only ever added.
 
-## What the next release changes on a box
+## What 0.8.2 changes on a box
 
 - The drive's stack passes `DRIVE_PASSWORD_LOGIN` only when
   `/opt/mk-drive/.env` sets it (it was `on` when unset), so a drive that
