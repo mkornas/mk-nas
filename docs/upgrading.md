@@ -51,6 +51,21 @@ was built for. A drive newer than its agent shows a banner on every page
 asking for the upgrade above, and the Storage pages may misbehave until
 then. An agent newer than its drive is fine: verbs are only ever added.
 
+## What 0.9.0 changes on a box
+
+- **The box says when something is wrong.** The agent keeps a list of
+  conditions that are true right now — a pool not ONLINE or filling up, a
+  disk failing or hot, a scrub, copy or settings backup that failed, an
+  update waiting — with the time each started, and clears them when they
+  stop (`docs/alerts.md`). `sudo mk-nas alerts` lists them; the drive shows
+  them on Storage → Overview and pushes them to a phone
+  (Settings → Notifications there). Nothing is sent by the agent itself.
+- The list is checked every five minutes (`MK_NAS_ALERTS_EVERY`) and at once
+  when ZFS reports a disk failing or coming back. A sleeping disk is never
+  woken for it.
+- New verbs `alerts` and `alert.ack`; the contract stays 2, so an older drive
+  keeps working and simply does not show them.
+
 ## What 0.8.2 changes on a box
 
 - The drive's stack passes `DRIVE_PASSWORD_LOGIN` only when
