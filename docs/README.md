@@ -14,6 +14,7 @@ Proposed decisions live in `PLAN.md` §2 until they are confirmed.
 | `upgrading.md` | one `.deb`, the contract the drive checks, what an upgrade touches |
 | `destroy.md` | what may be destroyed and what must be typed first |
 | `scrubs-and-scan-jobs.md` | the scrub schedule; scrubs and resilvers as jobs, ZFS still the truth |
+| `alerts.md` | what is wrong with the box right now: conditions raised, confirmed, acknowledged, cleared |
 | `events.md` | the `zpool events` tail: polled, in memory, what matters |
 | `network.md` | hostname and address, the netplan file, the timed revert |
 | `vitals.md` | the box at a glance from /proc, nothing on disk |

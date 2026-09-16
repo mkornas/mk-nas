@@ -10,6 +10,7 @@ import { Db } from './db.ts';
 import { detachedArgv } from './detach.ts';
 import { EventLog } from './events.ts';
 import { revertIfExpired } from './network.ts';
+import { evaluate } from './alerts.ts';
 import { reconcileScans } from './scans.ts';
 import { Vitals } from './system.ts';
 import { run } from './run.ts';
@@ -19,8 +20,18 @@ import { listen } from './server.ts';
 const audit = createAudit(config.audit);
 const db = new Db(config.db);
 // what ZFS reports, every few seconds, so a fault is known when it happens; a scan that ended closes its job at once
-const events = new EventLog((a, o) => run(a, { timeout: config.timeout, ...o }), { every: config.eventsEvery, onScanEnd: () => reconcileScans(run, db) });
+const runner = (a: string[], o?: Parameters<typeof run>[1]) => run(a, { timeout: config.timeout, ...o });
+// what is wrong with the box right now (alerts.ts): on its own slow timer, and at once when ZFS says something that matters
+const alerts = () =>
+  evaluate({ run: runner, db, version: config.version }).then(
+    () => {},
+    (e: Error) => console.error(`alerts: ${e.message}`),
+  );
+const events = new EventLog(runner, { every: config.eventsEvery, onScanEnd: () => reconcileScans(run, db), onEvents: () => void alerts() });
 events.start();
+void alerts();
+const alertTimer = setInterval(() => void alerts(), config.alertsEvery);
+alertTimer.unref();
 // the box at a glance, every 5 s, half an hour in memory
 const vitals = new Vitals({ every: config.vitalsEvery, keep: Math.round(1_800_000 / config.vitalsEvery) });
 vitals.start();
@@ -83,6 +94,7 @@ reapply((a, o) => run(a, { timeout: config.timeout, ...o }), db, shares).then(
 );
 
 const shutdown = () => {
+  clearInterval(alertTimer);
   events.stop();
   vitals.stop();
   server.close(() => {

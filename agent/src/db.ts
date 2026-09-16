@@ -6,6 +6,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type {
+  Alert,
+  AlertSeverity,
   Job,
   Policy,
   PolicySetArgs,
@@ -16,8 +18,11 @@ import type {
   ScrubPolicy,
   Share,
   SmbUser,
+  StoredAlert,
   UpdateRun,
 } from '../../shared/types.ts';
+
+const RANK: Record<AlertSeverity, number> = { critical: 2, warning: 1, info: 0 };
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS policies (
@@ -94,12 +99,52 @@ const SCHEMA = [
     message TEXT,
     pid INTEGER
   )`,
+  `CREATE TABLE IF NOT EXISTS alerts (
+    key TEXT PRIMARY KEY,
+    severity TEXT NOT NULL,
+    title TEXT NOT NULL,
+    detail TEXT,
+    since INTEGER NOT NULL,
+    raised_at INTEGER NOT NULL,
+    last_seen INTEGER NOT NULL,
+    confirmed_at INTEGER,
+    acked_at INTEGER,
+    cleared_at INTEGER
+  )`,
+  `CREATE INDEX IF NOT EXISTS alerts_cleared ON alerts(cleared_at)`,
   `CREATE TABLE IF NOT EXISTS smb_users (
     name TEXT PRIMARY KEY,
     has_password INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL
   )`,
 ];
+
+interface AlertRow {
+  key: string;
+  severity: string;
+  title: string;
+  detail: string | null;
+  since: number;
+  raised_at: number;
+  last_seen: number;
+  confirmed_at: number | null;
+  acked_at: number | null;
+  cleared_at: number | null;
+}
+
+const toAlert = (r: AlertRow, now: number): StoredAlert => ({
+  key: r.key,
+  severity: r.severity as AlertSeverity,
+  title: r.title,
+  detail: r.detail,
+  since: new Date(r.since).toISOString(),
+  raisedAt: new Date(r.raised_at).toISOString(),
+  lastSeen: new Date(r.last_seen).toISOString(),
+  // confirmed once it has been true for long enough; a cleared one keeps whatever it reached
+  confirmed: r.confirmed_at !== null && r.confirmed_at <= now,
+  ackedAt: r.acked_at === null ? null : new Date(r.acked_at).toISOString(),
+  clearedAt: r.cleared_at === null ? null : new Date(r.cleared_at).toISOString(),
+});
 
 interface ShareRow {
   dataset: string;
@@ -283,6 +328,66 @@ export class Db {
 
   removeShare(dataset: string): boolean {
     return this.db.prepare('DELETE FROM shares WHERE dataset = ?').run(dataset).changes > 0;
+  }
+
+  // ---- alerts: what is wrong right now, and what cleared recently (alerts.ts decides, this only remembers) ----
+
+  /** Open alerts (still true), worst first, then newest. */
+  openAlerts(now = Date.now()): StoredAlert[] {
+    const rows = this.db.prepare('SELECT * FROM alerts WHERE cleared_at IS NULL ORDER BY since DESC').all() as unknown as AlertRow[];
+    return rows.map((r) => toAlert(r, now)).sort((a, b) => RANK[b.severity] - RANK[a.severity] || Date.parse(b.since) - Date.parse(a.since));
+  }
+
+  /** Cleared in the last `days`, newest first. */
+  clearedAlerts(days = 30, limit = 100, now = Date.now()): StoredAlert[] {
+    const rows = this.db
+      .prepare('SELECT * FROM alerts WHERE cleared_at IS NOT NULL AND cleared_at >= ? ORDER BY cleared_at DESC LIMIT ?')
+      .all(now - days * 86_400_000, limit) as unknown as AlertRow[];
+    return rows.map((r) => toAlert(r, now));
+  }
+
+  alerts(now = Date.now()): Alert[] {
+    return this.openAlerts(now);
+  }
+
+  /**
+   * The difference alerts.ts worked out. A key that is raised again after clearing starts over (new `since`, no
+   * acknowledgement); one that is still true keeps its `since` and its acknowledgement.
+   */
+  applyAlerts(
+    plan: {
+      raise: { key: string; severity: AlertSeverity; title: string; detail: string | null }[];
+      update: { key: string; severity: AlertSeverity; title: string; detail: string | null }[];
+      touch: string[];
+      clear: string[];
+    },
+    now = Date.now(),
+    confirmAfterMs = 60_000,
+  ): void {
+    const raise = this.db.prepare(
+      `INSERT INTO alerts (key, severity, title, detail, since, raised_at, last_seen, confirmed_at, acked_at, cleared_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)
+       ON CONFLICT(key) DO UPDATE SET severity = excluded.severity, title = excluded.title, detail = excluded.detail,
+         since = excluded.since, raised_at = excluded.raised_at, last_seen = excluded.last_seen,
+         confirmed_at = excluded.confirmed_at, acked_at = NULL, cleared_at = NULL`,
+    );
+    for (const c of plan.raise) raise.run(c.key, c.severity, c.title, c.detail, now, now, now, now + confirmAfterMs);
+    const update = this.db.prepare('UPDATE alerts SET severity = ?, title = ?, detail = ?, last_seen = ? WHERE key = ? AND cleared_at IS NULL');
+    for (const c of plan.update) update.run(c.severity, c.title, c.detail, now, c.key);
+    const seen = this.db.prepare('UPDATE alerts SET last_seen = ? WHERE key = ? AND cleared_at IS NULL');
+    for (const key of plan.touch) seen.run(now, key);
+    const clear = this.db.prepare('UPDATE alerts SET cleared_at = ?, last_seen = ? WHERE key = ? AND cleared_at IS NULL');
+    for (const key of plan.clear) clear.run(now, now, key);
+  }
+
+  /** Marks an open alert as seen. Returns false when there is no such open alert. */
+  ackAlert(key: string, now = Date.now()): boolean {
+    return this.db.prepare('UPDATE alerts SET acked_at = ? WHERE key = ? AND cleared_at IS NULL AND acked_at IS NULL').run(now, key).changes > 0;
+  }
+
+  /** Keeps a month of cleared alerts; the open ones are never dropped. */
+  pruneAlerts(now = Date.now(), days = 30): void {
+    this.db.prepare('DELETE FROM alerts WHERE cleared_at IS NOT NULL AND cleared_at < ?').run(now - days * 86_400_000);
   }
 
   replications(): StoredReplication[] {

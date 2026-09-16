@@ -20,6 +20,7 @@ import type {
   Verbs,
   Version,
 } from '../../shared/types.ts';
+import { FULL_WARNING, HOT, read as readAlerts } from './alerts.ts';
 import type { Db } from './db.ts';
 import type { EventLog } from './events.ts';
 import type { Vitals } from './system.ts';
@@ -158,7 +159,7 @@ export const verbs: { [V in Verb]: Handler<V> } = {
     const problems: string[] = [];
     const poolRows = await Promise.all(
       pools.map(async (p) => {
-        const ok = p.health === 'ONLINE' && p.capacity < 90;
+        const ok = p.health === 'ONLINE' && p.capacity < FULL_WARNING;
         if (p.health !== 'ONLINE') {
           const detail = await getPool(deps.run, p.name);
           const bad: string[] = [];
@@ -168,7 +169,7 @@ export const verbs: { [V in Verb]: Handler<V> } = {
           };
           detail.vdevs.forEach(walk);
           problems.push(`Pool ${p.name} is ${p.health}${bad.length ? ` (${bad.join(', ')})` : ''}${detail.action ? ` — ${detail.action}` : ''}`);
-        } else if (p.capacity >= 90) problems.push(`Pool ${p.name} is ${p.capacity}% full`);
+        } else if (p.capacity >= FULL_WARNING) problems.push(`Pool ${p.name} is ${p.capacity}% full`);
         return { name: p.name, health: p.health, capacity: p.capacity, ok };
       }),
     );
@@ -177,12 +178,23 @@ export const verbs: { [V in Verb]: Handler<V> } = {
       if (d.smart?.passed === false) reason = 'SMART self-assessment failed';
       else if ((d.smart?.reallocated ?? 0) > 0) reason = `${d.smart!.reallocated} reallocated sectors`;
       else if ((d.smart?.pending ?? 0) > 0) reason = `${d.smart!.pending} pending sectors`;
-      else if ((d.smart?.temperature ?? 0) >= 55) reason = `${d.smart!.temperature} °C`;
+      else if ((d.smart?.temperature ?? 0) >= HOT) reason = `${d.smart!.temperature} °C`;
       if (reason) problems.push(`Disk ${d.id}: ${reason}`);
       return { id: d.id, ok: reason === null, reason };
     });
     const events = deps.events?.recent(20, false, new Date(Date.now() - 86_400_000)) ?? [];
     return { ok: problems.length === 0, pools: poolRows, disks: diskRows, problems, events };
+  },
+  async alerts(args, deps) {
+    only(args, []);
+    // what the last evaluation found; the agent's own timer keeps it current, so a page may poll this as often as it likes
+    return readAlerts(deps.db);
+  },
+  async 'alert.ack'(args, deps) {
+    const a = only(args, ['key']);
+    if (typeof a.key !== 'string' || !/^[a-z]+:[^\s]{1,200}$/.test(a.key)) throw new BadArgs('key: not an alert key');
+    if (!deps.db.ackAlert(a.key)) throw new BadArgs(`no open alert ${a.key}`);
+    return readAlerts(deps.db);
   },
   async jobs(args, deps) {
     const a = only(args, ['replicationId', 'pool']);

@@ -69,8 +69,11 @@ pages live in mk-drive and light up only when the socket is there.
 - **Shares** — hand a dataset out over SMB (Finder, Explorer, Time Machine)
   and NFS, to the people who have an account on the drive.
 - **Health** — disk SMART and self-tests, scrub results and schedules, pool
-  state, ZFS events as they happen, free space, the box's vitals; alerts
-  through mk-dashboard when it is around.
+  state, ZFS events as they happen, free space, the box's vitals.
+- **Alerts** — the box says when something is wrong (a pool degraded or
+  filling up, a disk failing or hot, a scrub, copy or backup that failed, an
+  update waiting) and says when it is over; `sudo mk-nas alerts`, or the drive
+  shows them (`docs/alerts.md`).
 - **Network** — the box's name (with mDNS) and address, changed from the
   drive with a revert that protects you from locking yourself out.
 - **Install** — a USB stick that asks for a hostname, an admin email and the

@@ -41,6 +41,8 @@ export interface Config {
   eventsEvery: number;
   /** How often the vitals are sampled, in ms. */
   vitalsEvery: number;
+  /** How often the box is checked over for things that are wrong (alerts.ts), in ms. A ZFS event that matters checks at once anyway. */
+  alertsEvery: number;
   /** The SQLite file for policies (later shares, jobs, SMB users). */
   db: string;
   /** Where datasets made "as a location" are mounted; the mk-drive container sees it as /locations. */
@@ -75,6 +77,7 @@ export const config: Config = {
   timeout: Number(process.env.MK_NAS_TIMEOUT) || 60_000,
   eventsEvery: Number(process.env.MK_NAS_EVENTS_EVERY) || 5_000,
   vitalsEvery: Number(process.env.MK_NAS_VITALS_EVERY) || 5_000,
+  alertsEvery: Number(process.env.MK_NAS_ALERTS_EVERY) || 5 * 60_000,
   db: process.env.MK_NAS_DB || '/var/lib/mk-nas/mk-nas.db',
   locationsDir: process.env.MK_NAS_LOCATIONS || '/srv/locations',
   smbConf: process.env.MK_NAS_SMB_CONF || '/etc/samba/smb.conf',

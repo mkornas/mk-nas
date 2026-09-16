@@ -31,6 +31,8 @@ export type Verb =
   | 'snapshots'
   | 'scrubs'
   | 'health'
+  | 'alerts'
+  | 'alert.ack'
   | 'jobs'
   | 'events'
   | 'system'
@@ -387,6 +389,42 @@ export interface Snapshot {
   creation: string;
 }
 
+/** How loud a condition is: `critical` needs someone today, `warning` soon, `info` is worth knowing. */
+export type AlertSeverity = 'critical' | 'warning' | 'info';
+
+/** Something that is wrong with the box right now (or was, until it cleared). The key is stable; the title is for people. */
+export interface Alert {
+  /** Stable id of the condition, e.g. `pool:tank:state`, `disk:ata-…:smart`. Rewording a title never re-raises it. */
+  key: string;
+  severity: AlertSeverity;
+  title: string;
+  detail: string | null;
+  /** When it first became true and stayed true. */
+  since: string;
+  /** When it last checked out as still true. */
+  lastSeen: string;
+  /** It has been true long enough to be worth waking someone; anything younger may still be a blip. */
+  confirmed: boolean;
+  /** When someone said they had seen it. An acknowledged alert stays open but stops nagging, and nags again if it clears and comes back. */
+  ackedAt: string | null;
+  /** Set once it stopped being true; open alerts have null. */
+  clearedAt: string | null;
+}
+
+/** As the agent keeps it. */
+export interface StoredAlert extends Alert {
+  raisedAt: string;
+}
+
+export interface Alerts {
+  /** True now, worst and newest first. */
+  open: Alert[];
+  /** Cleared recently, newest first. */
+  recent: Alert[];
+  /** The worst severity among the open ones, or null when there is nothing. */
+  worst: AlertSeverity | null;
+}
+
 export interface Health {
   ok: boolean;
   pools: { name: string; health: PoolHealth; capacity: number; ok: boolean }[];
@@ -626,6 +664,10 @@ export interface Verbs {
   snapshots: { args: { dataset?: string }; result: Snapshot[] };
   scrubs: { args: Record<string, never>; result: Scrub[] };
   health: { args: Record<string, never>; result: Health };
+  /** What is wrong with the box right now, and what cleared in the last month. Read as often as you like; the agent works it out on its own timer. */
+  alerts: { args: Record<string, never>; result: Alerts };
+  /** "I have seen this": the alert stays open while the condition lasts, but the drive stops pushing it. It nags again if it clears and comes back. */
+  'alert.ack': { args: { key: string }; result: Alerts };
   /** Running jobs first, then the newest finished ones (up to 50); `pool` narrows it to that pool's scrubs and resilvers. */
   jobs: { args: { replicationId?: number; pool?: string }; result: Job[] };
   /** Newest first, the ones that matter unless `all`; up to `limit` (50). */

@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { mkdtemp, symlink, rm, writeFile } from 'node:fs/promises';
 import { hostname, tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { Alerts } from '../../shared/types.ts';
 import type { Runner, RunResult } from '../src/run.ts';
 import { handle } from '../src/server.ts';
 import type { Deps } from '../src/verbs.ts';
@@ -65,6 +66,42 @@ const deps = (run: Runner, extra: Partial<Deps> = {}): Deps => ({
   network: NET,
   backup: BKP,
   ...extra,
+});
+
+test('alerts: what is wrong now and what cleared, and acknowledging one', async () => {
+  const f = fake({});
+  const db = new Db(':memory:');
+  const t = Date.now();
+  db.applyAlerts(
+    {
+      raise: [
+        { key: 'pool:tank:state', severity: 'critical', title: 'Pool tank is DEGRADED', detail: 'Replace the disk.' },
+        { key: 'update:available', severity: 'info', title: 'mk-nas 0.9.0 is out', detail: null },
+      ],
+      update: [],
+      touch: [],
+      clear: [],
+    },
+    t - 120_000,
+  );
+  const res = await handle({ id: 1, verb: 'alerts', args: {} }, deps(f.run, { db }), audit);
+  assert.equal(res.ok, true, JSON.stringify(res));
+  const a = res.ok && (res.result as Alerts);
+  assert.deepEqual(a && a.open.map((x) => x.key), ['pool:tank:state', 'update:available']);
+  assert.equal(a && a.worst, 'critical');
+  assert.equal(a && a.open[0].confirmed, true, 'two minutes old: worth telling someone');
+  assert.deepEqual(a && a.recent, []);
+  assert.equal(f.calls.length, 0, 'reading alerts runs no command: the timer already did the work');
+
+  const acked = await handle({ id: 2, verb: 'alert.ack', args: { key: 'pool:tank:state' } }, deps(f.run, { db }), audit);
+  assert.equal(acked.ok, true);
+  assert.ok(acked.ok && (acked.result as Alerts).open[0].ackedAt, 'the alert stays open, but seen');
+
+  const bad = await handle({ id: 3, verb: 'alert.ack', args: { key: 'pool:tank:nothing' } }, deps(f.run, { db }), audit);
+  assert.equal(bad.ok, false);
+  const shape = await handle({ id: 4, verb: 'alert.ack', args: { key: 'rm -rf /' } }, deps(f.run, { db }), audit);
+  assert.equal(shape.ok, false);
+  db.close();
 });
 
 test('unknown verb is refused and audited', async () => {

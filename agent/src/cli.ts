@@ -59,7 +59,7 @@ function take(flag: string, withValue = false): string | undefined {
 function usage(msg?: string): never {
   if (msg) console.error(`mk-nas: ${msg}`);
   console.error(
-    'usage: mk-nas health|disks|pools|datasets|snapshots|scrubs|policies|version | pool <name> | pool create … | scrub <pool> | wipe <disk> | dataset create|set|destroy … | snapshot … | policy … | call <verb> [json]',
+    'usage: mk-nas alerts|health|disks|pools|datasets|snapshots|scrubs|policies|version | pool <name> | pool create … | scrub <pool> | wipe <disk> | dataset create|set|destroy … | snapshot … | policy … | call <verb> [json]',
   );
   process.exit(2);
 }
@@ -221,6 +221,14 @@ function print(verb: string, result: unknown): void {
       return void console.log(
         `mk-nasd ${r.agent} on ${r.hostname} · node ${r.node} · ${r.zfs ?? 'no zfs'} · ${r.smartctl ? 'smartctl ' + r.smartctl : 'no smartctl'}`,
       );
+    case 'alerts': {
+      const line = (a: any) =>
+        `${a.severity === 'critical' ? '!!' : a.severity === 'warning' ? '! ' : '  '} ${a.title}${a.ackedAt ? ' (seen)' : ''}\n     since ${a.since.replace('T', ' ').slice(0, 16)}${a.detail ? `\n     ${a.detail}` : ''}`;
+      if (!r.open.length) console.log('Nothing is wrong with this box.');
+      else console.log(r.open.map(line).join('\n'));
+      if (r.recent.length) console.log(`\nCLEARED LATELY:\n  ${r.recent.map((a: any) => `${a.clearedAt.replace('T', ' ').slice(0, 16)}  ${a.title}`).join('\n  ')}`);
+      return;
+    }
     case 'health':
       console.log(r.ok ? 'OK — every pool online, every disk healthy' : `PROBLEMS:\n  ${r.problems.join('\n  ')}`);
       console.log(
@@ -522,6 +530,7 @@ function print(verb: string, result: unknown): void {
 }
 
 const COMMANDS = [
+  'alerts',
   'health',
   'disks',
   'pools',
@@ -651,6 +660,7 @@ async function main(): Promise<void> {
   let verb: Verb;
   let args: Record<string, unknown> | undefined;
   switch (cmd) {
+    case 'alerts':
     case 'health':
     case 'disks':
     case 'pools':
