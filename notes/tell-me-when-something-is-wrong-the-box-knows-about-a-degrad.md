@@ -1,0 +1,3 @@
+# *Tell me when something is wrong** the box knows about a degraded pool, a failing or overheating disk, a failed scrub, a failed settings backup and a waiting update, but nothing reaches the owner unless they open the page: a small alert engine in the agent (one event per condition, remembered so it does not repeat, cleared when the condition goes) and delivery the drive can use — phone push through mk-drive first, email as an option; quiet by default, no chatter
+
+- 2026-09-16 15:49 — Pairs with the mk-drive card 'Alerts from the box, on the phone': the agent owns the conditions and their state, the drive owns push and the settings UI.

@@ -1,6 +1,6 @@
 ---
 kanban-plugin: board
-updated: 2026-09-15
+updated: 2026-09-16
 ---
 
 # mk-nas
@@ -11,6 +11,7 @@ One card per line, ranked top-down inside each column. `#p0`..`#p3` = priority, 
 
 ## Next
 
+- [ ] *Tell me when something is wrong** the box knows about a degraded pool, a failing or overheating disk, a failed scrub, a failed settings backup and a waiting update, but nothing reaches the owner unless they open the page: a small alert engine in the agent (one event per condition, remembered so it does not repeat, cleared when the condition goes) and delivery the drive can use — phone push through mk-drive first, email as an option; quiet by default, no chatter #p1 #alerts [[tell-me-when-something-is-wrong-the-box-knows-about-a-degrad]]
 - [ ] **Phase 0 — baseline** Ubuntu Server 24.04 on a small PC with Cockpit + 45Drives ZFS and file-sharing plugins; mk-drive on the datasets; two weeks of use; write notes/missing.md with what is still missing #p1 #phase0
 - [ ] **Later — apps** docker-compose stacks from a list (mk-drive, Immich), UPS, encryption keys, S3 backup target #p3 #later
 - [ ] **mk-dashboard on the NAS** add it to the /opt/mk-drive stack (port 8800, docker socket, /proc /sys /host mounts) once ghcr.io/mkornas/mk-dashboard is pullable without login (it answers 403 today); host vitals, containers, backups and push alerts come for free #p2 #phase5 [[mk-dashboard-on-the-nas]]
@@ -21,6 +22,9 @@ One card per line, ranked top-down inside each column. `#p0`..`#p3` = priority, 
 - [ ] *Disk spindown** an optional standby timer per pool disk (hdparm -S, kept across reboots), off by default, set on the Disks page; worth it only after 'Idle disks stay idle' #p3 #disks
 - [ ] *Disk temperatures over time** load the drivetemp module so SATA temperatures come from hwmon in the 5 s vitals (no smartctl, a sleeping disk is not woken), and show each disk's temperature with a half-hour sparkline on the overview #p3 #disks
 - [ ] **Found by name from Windows** Windows Explorer's network view does not list the box: Samba runs without nmbd and there is no WS-Discovery; add wsdd (or wsdd2) to the package so the box shows up under Network, and say in the Shares page which name Windows uses. Found when Déjà Dup on Linux failed on the bare smb://mk-nas name (the pages now show <name>.local) #p3 #shares
+- [ ] *Back up the data itself, off the box** replication to another mk-nas exists; add a cloud target (S3, Backblaze B2) with restic or rclone in a transient unit: a schedule, progress as a job, a restore path that is tested, and the credentials handled like the tunnel token (root-only .env, never returned); set up from the drive's Storage section #p2 #backup
+- [ ] *Power cuts** with a UPS on USB (NUT), watch the battery and shut the box down cleanly before it dies; show the UPS on the Overview and let the owner set the threshold; nothing installed when there is no UPS #p2 #hardware
+- [ ] *Grow the pool** add a disk or a mirror to an existing pool, and keep a hot spare, from the Pools page instead of the shell: the plan shown before it runs (what ZFS will do, what cannot be undone), the typed pool name for anything destructive #p2 #pools
 
 ## Later
 
