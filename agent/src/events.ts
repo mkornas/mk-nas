@@ -122,7 +122,8 @@ export interface EventLogOptions {
   every: number;
   /** Called after a scrub or resilver ended, so its job row can be closed within seconds. */
   onScanEnd?: () => Promise<void>;
-  /** Called with the fresh events that matter (a disk faulted, checksums failed), so an alert appears in seconds instead of at the next sweep. */
+  /** Called with the fresh events worth looking at the box for — a disk faulted, checksums failed, a disk came back, a
+   * scan ended — so an alert appears, or goes, in seconds instead of at the next sweep. */
   onEvents?: (fresh: ZfsEvent[]) => void;
 }
 
@@ -163,7 +164,8 @@ export class EventLog {
       this.tail.push(...fresh);
       if (this.tail.length > KEEP) this.tail.splice(0, this.tail.length - KEEP);
       if (this.opts.onScanEnd && fresh.some((e) => /\.(scrub|resilver)_finish$/.test(e.class))) await this.opts.onScanEnd().catch(() => {});
-      const worth = fresh.filter((e) => e.matters);
+      // a state change in either direction: a disk that faulted raises something, one that came back clears it
+      const worth = fresh.filter((e) => e.matters || /statechange|(scrub|resilver)_finish/.test(e.class));
       if (this.opts.onEvents && worth.length) this.opts.onEvents(worth);
       return fresh;
     } finally {
