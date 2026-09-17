@@ -179,8 +179,17 @@ export async function listShares(run: Runner, db: Db): Promise<Share[]> {
   return stored.map((s) => ({ ...s, mountpoint: datasets.find((d) => d.name === s.dataset)?.mountpoint ?? null }));
 }
 
+/** One at a time: two changes at once would otherwise write through the same temporary file, and the older list could land last. */
+let applying: Promise<unknown> = Promise.resolve();
+
 /** Regenerate both files from the database and reload; daemons come up when the first share of their kind appears. */
-export async function apply(run: Runner, db: Db, cfg: ShareConfig): Promise<Share[]> {
+export function apply(run: Runner, db: Db, cfg: ShareConfig): Promise<Share[]> {
+  const next = applying.then(() => applyNow(run, db, cfg));
+  applying = next.catch(() => {});
+  return next;
+}
+
+async function applyNow(run: Runner, db: Db, cfg: ShareConfig): Promise<Share[]> {
   const shares = await listShares(run, db);
   const owner = await ownerNamesOf(run, cfg.ownerUid, cfg.ownerGid);
   await writeAtomically(cfg.smbConf, smbConf(shares, cfg, owner.user, owner.group));

@@ -571,3 +571,51 @@ test("share names: never one of Samba's own sections, never the same as another 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('two share changes at once: the files are written one after the other, so the last one holds every share', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'mk-nas-shares-'));
+  const db = new Db(':memory:');
+  try {
+    const f = fake({
+      [DS]: ALL,
+      [`${DS} -r tank/photos`]: row('tank/photos', '/srv/locations/photos'),
+      [`${DS} -r tank/docs`]: row('tank/docs', '/srv/locations/docs'),
+      'getent passwd 1000': 'alice:x:1000:1000::/home/alice:/bin/bash\n',
+      'getent group 1000': 'alice:x:1000:\n',
+      'systemctl *': '',
+      'smbcontrol *': '',
+      'exportfs *': '',
+    });
+    // the first write is slow after it has read the list of shares: unqueued, it would land last, without the second share
+    let slow = true;
+    const run: Runner = async (argv, o) => {
+      if (slow && argv[0] === 'getent') {
+        slow = false;
+        await new Promise((r) => setTimeout(r, 60));
+      }
+      return f.run(argv, o);
+    };
+    const deps: Deps = {
+      run,
+      version: 't',
+      db,
+      locationsDir: '/srv/locations',
+      shares: cfg(dir),
+      replication: { keyFile: join(dir, 'key'), knownHosts: join(dir, 'kh') },
+      spawn: () => {},
+      network: NET,
+      backup: BKP,
+    };
+    const audit = async () => {};
+    const both = await Promise.all([
+      handle({ id: 1, verb: 'share.set', args: { dataset: 'tank/photos', smb: true } }, deps, audit),
+      handle({ id: 2, verb: 'share.set', args: { dataset: 'tank/docs', smb: true } }, deps, audit),
+    ]);
+    assert.deepEqual(both.map((r) => r.ok), [true, true], JSON.stringify(both));
+    const sections = [...(await readFile(join(dir, 'smb.conf'), 'utf8')).matchAll(/^\[(.+)\]$/gm)].map((m) => m[1]);
+    assert.deepEqual(sections.sort(), ['docs', 'global', 'photos']);
+  } finally {
+    db.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
