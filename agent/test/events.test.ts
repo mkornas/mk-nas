@@ -74,6 +74,15 @@ test('EventLog: only new ids on each poll, the tail newest first, repeats folded
     ],
     'since, folded',
   );
+  // the kernel's list was cleared (zpool events -c, a module reload): its ids start over, and the log goes on with them
+  out = ev(1, 'ereport.fs.zfs.io', { vdev_path: DISK }, T0 + 100);
+  const again = await log.poll();
+  assert.deepEqual(
+    again.map((e) => e.eid),
+    [1],
+  );
+  assert.equal(log.recent()[0].summary, 'tank: I/O error on ata-WDC_WD20EFRX-68EUZN0_WD-AAAAAAAAAAAA');
+  assert.equal((await log.poll()).length, 0);
   const quiet = new EventLog(async () => ({ argv: [], exitCode: 1, stdout: '', stderr: 'no zfs' }), { every: 60_000 });
   assert.deepEqual(await quiet.poll(), [], 'no zfs yet is not an error');
 });

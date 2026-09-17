@@ -158,7 +158,10 @@ export class EventLog {
     try {
       const r = await this.run(['zpool', 'events', '-v', '-H'], { timeout: 20_000 });
       if (r.exitCode !== 0) return [];
-      const fresh = parseEvents(r.stdout).filter((e) => e.eid > this.lastEid);
+      const all = parseEvents(r.stdout);
+      // the kernel's ids start over when its list is cleared (`zpool events -c`) or the module is reloaded: start over with it
+      if (all.length && all[all.length - 1].eid < this.lastEid) this.lastEid = -1;
+      const fresh = all.filter((e) => e.eid > this.lastEid);
       if (fresh.length === 0) return [];
       this.lastEid = fresh[fresh.length - 1].eid;
       this.tail.push(...fresh);
