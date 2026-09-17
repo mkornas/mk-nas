@@ -176,7 +176,12 @@ export async function createDataset(run: Runner, a: DatasetCreateArgs, locations
   if (a.atime !== undefined) props.push('-o', `atime=${boolOf(a.atime, 'atime') ? 'on' : 'off'}`);
   const location = a.location === undefined ? false : boolOf(a.location, 'location');
   const mountpoint = location ? join(locationsDir, basename(name)) : null;
-  if (mountpoint) props.push('-o', `mountpoint=${mountpoint}`);
+  if (mountpoint) {
+    // a location is named by the last component alone: pool/a/x and pool/b/x would mount one over the other
+    const taken = (await listDatasets(run)).find((d) => d.mountpoint === mountpoint);
+    if (taken) throw new BadArgs(`${taken.name} is already the location "${basename(name)}"; pick another name`);
+    props.push('-o', `mountpoint=${mountpoint}`);
+  }
   await must(run, ['zfs', 'create', ...props, name]);
   // the dataset is the container's to write from the first second: owned by the user it runs as (DRIVE_UID/DRIVE_GID in the stack's .env)
   if (mountpoint) await must(run, ['chown', `${owner.uid}:${owner.gid}`, mountpoint]);

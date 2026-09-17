@@ -204,6 +204,7 @@ test('dataset.create: properties become -o pairs; a location gets the mountpoint
   const f = fake({
     'zfs create -o quota=1073741824 -o compression=zstd -o atime=off tank/docs': '',
     [`${DS} -r tank/docs`]: row('tank/docs', '/tank/docs'),
+    [DS]: row('tank', '/tank') + row('tank/docs', '/tank/docs') + row('tank/a/music', '/srv/locations/music'),
     'zfs create -o mountpoint=/srv/locations/photos tank/photos': '',
     'chown 1000:1000 /srv/locations/photos': '',
     [`${DS} -r tank/photos`]: row('tank/photos', '/srv/locations/photos'),
@@ -220,6 +221,8 @@ test('dataset.create: properties become -o pairs; a location gets the mountpoint
     [{ name: 'tank/x', compression: 'lzma' }, /compression must be/],
     [{ name: 'tank/x', atime: 'yes' }, /atime must be/],
     [{ name: 'tank/-x' }, /not a dataset name/],
+    // a location is named by the last component alone: a second one of that name would mount over the first
+    [{ name: 'tank/b/music', location: true }, /tank\/a\/music is already the location "music"/],
   ] as [Record<string, unknown>, RegExp][]) {
     const r = await handle({ id: 3, verb: 'dataset.create', args }, d, audit);
     assert.match(!r.ok ? r.error.message : 'ok', re, JSON.stringify(args));
