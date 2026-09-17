@@ -52,6 +52,8 @@ try {
         const name = `${t.dataset}@${t.name}`;
         try {
           await must(run, ['zfs', 'snapshot', name]);
+          // only now does the one it replaces go: a take that failed (a full pool) never costs the last snapshot
+          if (t.makesRoom) todo.destroy.push(t.makesRoom);
           console.log(`took ${name}`);
           await audit({ ts: now.toISOString(), verb: 'tick.snapshot', args: { name }, ok: true, ms: 0 });
         } catch (e) {

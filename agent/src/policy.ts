@@ -16,7 +16,9 @@ export const stamp = (t: Date): string => t.toISOString().slice(0, 16).replace('
 export const autoName = (period: Period, t: Date): string => `auto-${period}-${stamp(t)}`;
 
 export interface Plan {
-  take: { dataset: string; name: string }[];
+  /** `makesRoom`: the old snapshot the new one replaces; it goes only once the new one exists (a failed take keeps it). */
+  take: { dataset: string; name: string; makesRoom?: string }[];
+  /** Beyond the counts as they are now, whatever happens to `take`. */
   destroy: string[];
 }
 
@@ -38,9 +40,10 @@ export function plan(policy: Policy, existing: Snapshot[], now: Date, changed = 
     }
     const newest = mine.at(-1);
     const due = changed && (!newest || now.getTime() - Date.parse(newest.creation) >= LENGTH[period] - SLACK);
-    if (due) out.take.push({ dataset: policy.dataset, name: autoName(period, now) });
-    const total = mine.length + (due ? 1 : 0);
-    if (total > keep) out.destroy.push(...mine.slice(0, total - keep).map((s) => s.name));
+    const over = Math.max(0, mine.length - keep);
+    out.destroy.push(...mine.slice(0, over).map((s) => s.name));
+    // a full period: the new snapshot takes the place of the oldest one kept
+    if (due) out.take.push({ dataset: policy.dataset, name: autoName(period, now), ...(mine.length >= keep ? { makesRoom: mine[over].name } : {}) });
   }
   return out;
 }

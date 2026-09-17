@@ -36,7 +36,17 @@ test('pruning keeps the newest N of a period, counting the one about to be taken
   const existing = ['09-00', '10-00', '11-00'].map((h) => snap(`auto-hourly-2026-09-12_${h}`, `2026-09-12T${h.replace('-', ':')}:00Z`));
   const p = plan(policy({ hourly: 2 }), existing, now);
   assert.equal(p.take.length, 1);
-  assert.deepEqual(p.destroy, ['tank/docs@auto-hourly-2026-09-12_09-00', 'tank/docs@auto-hourly-2026-09-12_10-00']);
+  // beyond the count already: goes whatever happens; the one the new snapshot replaces goes only once that one exists
+  assert.deepEqual(p.destroy, ['tank/docs@auto-hourly-2026-09-12_09-00']);
+  assert.equal(p.take[0].makesRoom, 'tank/docs@auto-hourly-2026-09-12_10-00');
+});
+
+test('keep 1: the only snapshot is never in destroy, so a take that fails (a full pool) leaves it', () => {
+  const p = plan(policy({ hourly: 1 }), [snap('auto-hourly-2026-09-12_10-00', '2026-09-12T10:00:00Z')], now);
+  assert.deepEqual(p.destroy, []);
+  assert.deepEqual(p.take, [{ dataset: 'tank/docs', name: 'auto-hourly-2026-09-12_12-03', makesRoom: 'tank/docs@auto-hourly-2026-09-12_10-00' }]);
+  // room left: nothing to replace
+  assert.equal(plan(policy({ hourly: 2 }), [snap('auto-hourly-2026-09-12_10-00', '2026-09-12T10:00:00Z')], now).take[0].makesRoom, undefined);
 });
 
 test('a period switched off drops its automatic snapshots; manual and other datasets are never touched', () => {
