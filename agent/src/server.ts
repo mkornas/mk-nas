@@ -43,7 +43,17 @@ function redacted(args: Record<string, unknown> | undefined): Record<string, unk
   return { ...args, ...Object.fromEntries(SECRET_ARGS.filter((k) => k in args).map((k) => [k, '[redacted]'])) };
 }
 
-export async function handle(req: Request, deps: Deps, audit: Audit): Promise<Response> {
+/**
+ * The audit file may be unwritable (a full disk): the verb has run by then and its answer stands, so the line goes to
+ * stderr (the journal) with the reason instead of taking the agent down as an unhandled rejection.
+ */
+const lenient =
+  (audit: Audit): Audit =>
+  (line) =>
+    audit(line).catch((e: Error) => void console.error(`audit not written (${e.message}): ${JSON.stringify(line)}`));
+
+export async function handle(req: Request, deps: Deps, auditTo: Audit): Promise<Response> {
+  const audit = lenient(auditTo);
   const t0 = performance.now();
   const shown = redacted(req.args);
   if (!isVerb(req.verb)) {

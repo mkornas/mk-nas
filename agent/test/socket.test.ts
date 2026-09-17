@@ -5,7 +5,7 @@ import { connect, type Server } from 'node:net';
 import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { listen } from '../src/server.ts';
+import { handle, listen } from '../src/server.ts';
 import type { Runner } from '../src/run.ts';
 import { Db } from '../src/db.ts';
 import type { ShareConfig } from '../src/shares.ts';
@@ -114,4 +114,25 @@ test('bad lines are answered, not fatal', async () => {
     ['bad-request', 'bad-request', 'bad-request', 'bad-request', 'unknown-verb'],
   );
   assert.equal(res[4].id, 9);
+});
+
+test('an audit that cannot be written (a full disk) does not change the answer or take the agent down', async () => {
+  const full = async () => {
+    throw new Error('ENOSPC: no space left on device');
+  };
+  const deps = { db: { policies: () => [] } } as never;
+  const lines: string[] = [];
+  const error = console.error;
+  console.error = (l: string) => void lines.push(l);
+  try {
+    assert.deepEqual(await handle({ id: 1, verb: 'policies' }, deps, full), { id: 1, ok: true, result: [] });
+    // the failing path audits too: still an answer, not a rejection
+    const refused = await handle({ id: 2, verb: 'policies', args: { junk: 1 } }, deps, full);
+    assert.equal(refused.ok, false);
+    assert.equal((await handle({ id: 3, verb: 'nope' as never }, deps, full)).ok, false);
+  } finally {
+    console.error = error;
+  }
+  assert.equal(lines.length, 3);
+  assert.match(lines[0], /^audit not written \(ENOSPC.*"verb":"policies"/);
 });
