@@ -15,6 +15,7 @@ import type { Alert, Alerts, AlertSeverity, Disk, Job, PoolSummary, StoredAlert 
 import type { Db } from './db.ts';
 import { listDisks } from './disks.ts';
 import { listPools } from './zfs.ts';
+import { newer } from './updates.ts';
 import type { Runner } from './run.ts';
 
 /** A condition that is true now. `key` is stable (never the English text), so rewording a message does not raise it again. */
@@ -105,7 +106,7 @@ export function conditions(i: ConditionInput): Condition[] {
   }
 
   if (i.update?.error) out.push({ key: 'update:check', severity: 'info', title: 'The box could not check for updates', detail: i.update.error });
-  else if (i.update?.latest && i.update.latest.version !== i.version) {
+  else if (i.update?.latest && newer(i.update.latest.version, i.version)) {
     out.push({ key: 'update:available', severity: 'info', title: `mk-nas ${i.update.latest.version} is out`, detail: 'Storage → Overview → System installs it. Your files stay where they are.' });
   }
 

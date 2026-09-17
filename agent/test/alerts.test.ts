@@ -87,6 +87,7 @@ test('jobs and updates: a failed backup, replication or scrub, and a release wor
   assert.deepEqual(keys(input({ scans: [job({ state: 'done' })] })), []);
   assert.deepEqual(keys(input({ update: { checkedAt: '', latest: { version: '0.9.0' }, error: null } })), ['update:available']);
   assert.deepEqual(keys(input({ update: { checkedAt: '', latest: { version: '0.8.2' }, error: null } })), [], 'already on it');
+  assert.deepEqual(keys(input({ update: { checkedAt: '', latest: { version: '0.8.1' }, error: null } })), [], 'a box ahead of the newest release is not told an older one is out');
   assert.deepEqual(keys(input({ update: { checkedAt: '', latest: null, error: 'no network' } })), ['update:check']);
 });
 
