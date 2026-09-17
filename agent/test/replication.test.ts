@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Db } from '../src/db.ts';
 import { BadArgs } from '../src/names.ts';
-import { due, plan, replicate, sshArgv, type Pipe } from '../src/replication.ts';
+import { due, ownSnapshots, plan, replName, replicate, sshArgv, type Pipe } from '../src/replication.ts';
 import type { Runner, RunResult } from '../src/run.ts';
 
 test('plan: resume wins, empty target = full, newest common = incremental, nothing new = none, diverged = refusal', () => {
@@ -123,9 +123,9 @@ test('a first run sends everything; the next one sends the difference and prunes
 
     let job = await replicate(deps, r.id);
     assert.equal(job.state, 'done', job.message ?? '');
-    assert.match(job.message ?? '', /^full send of repl-2026-09-12_20-00, 10 MB$/);
+    assert.match(job.message ?? '', /^full send of repl-1-2026-09-12_20-00, 10 MB$/);
     assert.equal(job.progress, 100);
-    assert.deepEqual(piped[0].send, ['zfs', 'send', '-P', '-v', '-p', 'tank/photos@repl-2026-09-12_20-00']);
+    assert.deepEqual(piped[0].send, ['zfs', 'send', '-P', '-v', '-p', 'tank/photos@repl-1-2026-09-12_20-00']);
     assert.deepEqual(
       piped[0].recv.slice(-9),
       ['root@backup-host', 'zfs', 'receive', '-u', '-s', '-x', 'mountpoint', '-o', 'readonly=on', 'backup/photos'].slice(-9),
@@ -135,17 +135,20 @@ test('a first run sends everything; the next one sends the difference and prunes
     now = new Date('2026-09-12T21:00:00Z');
     job = await replicate(deps, r.id);
     assert.equal(job.state, 'done', job.message ?? '');
-    assert.match(job.message ?? '', /^incremental from repl-2026-09-12_20-00 to repl-2026-09-12_21-00/);
-    assert.deepEqual(piped[1].send, ['zfs', 'send', '-P', '-v', '-p', '-I', 'tank/photos@repl-2026-09-12_20-00', 'tank/photos@repl-2026-09-12_21-00']);
+    assert.match(job.message ?? '', /^incremental from repl-1-2026-09-12_20-00 to repl-1-2026-09-12_21-00/);
+    assert.deepEqual(piped[1].send, ['zfs', 'send', '-P', '-v', '-p', '-I', 'tank/photos@repl-1-2026-09-12_20-00', 'tank/photos@repl-1-2026-09-12_21-00']);
     assert.ok(!f.calls.some((c) => c[0] === 'zfs' && c[1] === 'destroy'), 'keep 2: nothing pruned yet');
 
+    // a second copy of the same dataset, and a name from before ids: neither is this replication's to prune
+    db.setReplication({ ...r, id: undefined, host: 'other-host' });
+    localSnaps.unshift('repl-2026-09-01_00-00', 'repl-2-2026-09-12_19-00');
     now = new Date('2026-09-12T22:00:00Z');
     job = await replicate(deps, r.id);
     assert.equal(job.state, 'done', job.message ?? '');
     const pruned = f.calls.filter((c) => c.includes('destroy')).map((c) => c.at(-1));
     assert.deepEqual(
       pruned,
-      ['tank/photos@repl-2026-09-12_20-00', 'backup/photos@repl-2026-09-12_20-00'],
+      ['tank/photos@repl-1-2026-09-12_20-00', 'backup/photos@repl-1-2026-09-12_20-00'],
       'the oldest of ours goes, on both sides, nothing else',
     );
     assert.ok(!f.calls.some((c) => c.includes('-F')), 'never a forced receive');
@@ -161,6 +164,23 @@ test('a first run sends everything; the next one sends the difference and prunes
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test('two copies of one dataset prune only their own snapshots; the names from before ids belong to a single copy only', () => {
+  const names = [
+    'repl-2026-09-10_20-00',
+    'repl-1-2026-09-12_20-00',
+    'repl-2-2026-09-12_20-00',
+    'repl-12-2026-09-12_20-00',
+    'auto-daily-2026-09-12_00-00',
+    'repl-mine',
+  ];
+  assert.deepEqual(ownSnapshots(names, 1, false), ['repl-1-2026-09-12_20-00']);
+  assert.deepEqual(ownSnapshots(names, 2, false), ['repl-2-2026-09-12_20-00']);
+  assert.deepEqual(ownSnapshots(names, 1, true), ['repl-2026-09-10_20-00', 'repl-1-2026-09-12_20-00']);
+  // an id that looks like a year does not claim the old names
+  assert.deepEqual(ownSnapshots(['repl-2026-09-10_20-00', 'repl-2026-2026-09-12_20-00'], 2026, false), ['repl-2026-2026-09-12_20-00']);
+  assert.equal(replName(7, new Date('2026-09-12T20:00:00Z')), 'repl-7-2026-09-12_20-00');
 });
 
 test('a job whose process is gone is failed on the next start; a live one is left alone', () => {

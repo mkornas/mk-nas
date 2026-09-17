@@ -106,7 +106,7 @@ export interface Replication {
   /** Send the dataset's children too (zfs send -R). */
   recursive: boolean;
   schedule: ReplicationSchedule;
-  /** How many of the job's own repl-* snapshots to keep on each side. */
+  /** How many of the job's own repl-<id>-* snapshots to keep on each side. */
   keep: number;
   lastRunAt: string | null;
   lastResult: 'ok' | 'failed' | null;

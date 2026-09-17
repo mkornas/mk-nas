@@ -134,6 +134,19 @@ export const pipe: Pipe = (send, recv, onProgress) =>
     b.stdin.on('error', () => {}); // EPIPE when the receiver dies first: the exit codes tell the story
   });
 
+/**
+ * A replication's own snapshots: `repl-<id>-<stamp>`, so two copies of one dataset never prune each other's base.
+ * Before ids the name was `repl-<stamp>` for all of them; those belong to a replication only while it is the
+ * dataset's single one, and are otherwise left for a person to remove.
+ */
+export const replName = (id: number, t: Date): string => `repl-${id}-${stamp(t)}`;
+const STAMP = String.raw`\d{4}-\d{2}-\d{2}_\d{2}-\d{2}`;
+export function ownSnapshots(names: string[], id: number, alone: boolean): string[] {
+  const own = new RegExp(`^repl-${id}-${STAMP}$`);
+  const legacy = new RegExp(`^repl-${STAMP}$`);
+  return names.filter((s) => own.test(s) || (alone && legacy.test(s)));
+}
+
 const target = (r: Target) => ({ host: r.host, user: r.user, port: r.port });
 const shortName = (full: string) => full.slice(full.indexOf('@') + 1);
 
@@ -243,7 +256,7 @@ export async function replicate(deps: ReplicateDeps, id: number): Promise<Job> {
       return fail(`replication ${id} is not valid (${(e as Error).message}); set it again`);
     }
     await ensureKey(run, cfg);
-    const latest = `repl-${stamp(deps.now?.() ?? new Date())}`;
+    const latest = replName(id, deps.now?.() ?? new Date());
     await must(run, ['zfs', 'snapshot', ...(r.recursive ? ['-r'] : []), `${r.dataset}@${latest}`]);
     const localOut = await must(run, ['zfs', 'list', '-H', '-o', 'name', '-t', 'snapshot', '-s', 'creation', '-d', '1', r.dataset]);
     const local = localOut.split('\n').filter(Boolean).map(shortName);
@@ -286,8 +299,9 @@ export async function replicate(deps: ReplicateDeps, id: number): Promise<Job> {
     });
     if (result.exitCode !== 0) return fail(`${what}: ${result.stderr.split('\n').pop() || `exit ${result.exitCode}`}`);
     db.progressJob(job.id, total ?? last, total);
-    // our own repl-* snapshots beyond `keep`, on both sides, oldest first; nothing else is ever destroyed
-    const mine = local.filter((s) => s.startsWith('repl-'));
+    // this replication's own snapshots (ownSnapshots) beyond `keep`, on both sides, oldest first; nothing else is ever destroyed
+    const alone = db.replications().filter((x) => x.dataset === r.dataset).length === 1;
+    const mine = ownSnapshots(local, id, alone);
     if (!mine.includes(latest)) mine.push(latest);
     for (const old of mine.slice(0, Math.max(0, mine.length - r.keep))) {
       await run(['zfs', 'destroy', ...(r.recursive ? ['-r'] : []), `${r.dataset}@${old}`]);

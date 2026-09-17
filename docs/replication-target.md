@@ -13,4 +13,6 @@ replication target.
   with the receive token, never rolling the target back (no `-F`): a target
   that diverged is reported, not overwritten.
 - The target keeps the replicated snapshots; the job prunes only the
-  `repl-*` snapshots it made itself, on both sides, beyond a count.
+  `repl-<id>-*` snapshots it made itself, on both sides, beyond a count, so
+  two copies of one dataset never prune each other's base. The `repl-<stamp>`
+  names from before ids are pruned only while the dataset has a single copy.
