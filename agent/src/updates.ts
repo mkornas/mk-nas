@@ -192,13 +192,24 @@ export interface InstallContext {
   settle?: number;
 }
 
-/** Streams a download to a file and returns its sha256. */
-export async function download(fetchFn: Fetch, url: string, file: string, agent: string): Promise<string> {
+/** What a release's files may weigh: several times today's (a 32 MB package, a 180 MB image), far below the OS disk. */
+export const MAX_SMALL = 1024 * 1024;
+export const MAX_PACKAGE = 512 * 1024 * 1024;
+export const MAX_IMAGE = 2 * 1024 * 1024 * 1024;
+
+/** Streams a download to a file and returns its sha256. Nothing is verified yet at this point, so nothing past `max` bytes is written. */
+export async function download(fetchFn: Fetch, url: string, file: string, agent: string, max: number): Promise<string> {
   const res = await fetchFn(url, { headers: { 'user-agent': `mk-nas/${agent}` }, redirect: 'follow', signal: AbortSignal.timeout(30 * 60_000) });
-  if (!res.ok || !res.body) throw new Error(`download of ${url.split('/').pop()} failed: ${res.status}`);
+  const name = url.split('/').pop();
+  if (!res.ok || !res.body) throw new Error(`download of ${name} failed: ${res.status}`);
+  const tooBig = () => new Error(`${name} is larger than the ${Math.round(max / 1048576)} MB a release file of its kind may be`);
+  if (Number(res.headers.get('content-length') ?? 0) > max) throw tooBig();
   const hash = createHash('sha256');
+  let seen = 0;
   const tap = new Transform({
     transform(chunk, _enc, done) {
+      seen += chunk.length;
+      if (seen > max) return done(tooBig());
       hash.update(chunk);
       done(null, chunk);
     },
@@ -242,7 +253,7 @@ async function installSteps(ctx: InstallContext, version: string, runId: number,
   for (const name of ['SHA256SUMS', 'SHA256SUMS.sig', 'release.json', deb]) {
     const url = assetUrl(api, cfg.repo, name);
     if (!url) throw new Error(`release ${version} has no ${name}`);
-    hashes.set(name, await download(ctx.fetch, url, join(dir, name), ctx.agent));
+    hashes.set(name, await download(ctx.fetch, url, join(dir, name), ctx.agent, name === deb ? MAX_PACKAGE : MAX_SMALL));
   }
 
   step('verifying');
@@ -259,7 +270,13 @@ async function installSteps(ctx: InstallContext, version: string, runId: number,
   if (!(await verifiedImageOnBox(run, cfg, image))) {
     step(`downloading mk-drive ${meta.drive}`);
     const tgz = join(dir, `mk-drive-${meta.drive}.tgz`);
-    const sha = await download(ctx.fetch, `https://github.com/${cfg.driveRepo}/releases/download/v${meta.drive}/mk-drive-${meta.drive}.tgz`, tgz, ctx.agent);
+    const sha = await download(
+      ctx.fetch,
+      `https://github.com/${cfg.driveRepo}/releases/download/v${meta.drive}/mk-drive-${meta.drive}.tgz`,
+      tgz,
+      ctx.agent,
+      MAX_IMAGE,
+    );
     if (sha !== meta.driveImageSha256) throw new Error(`mk-drive-${meta.drive}.tgz does not match the signed release`);
     // mk-drive.service loads it before compose up, so the restart the package triggers finds the image here
     await copyFile(tgz, cfg.driveImageFile);

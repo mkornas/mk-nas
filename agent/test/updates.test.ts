@@ -10,6 +10,7 @@ import { run as realRun, type Runner } from '../src/run.ts';
 import {
   checkDue,
   checkForUpdate,
+  download,
   fetchLatest,
   installable,
   installRelease,
@@ -276,5 +277,31 @@ test('install refuses before touching the system: a tampered package, a wrong ke
     assert.ok(t.calls.some((c) => c[0] === '/opt/load-image.sh'));
   } finally {
     await t.done();
+  }
+});
+
+test('download: nothing past the size a release file of its kind may have is written, whether or not the server says how much is coming', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'mk-nas-dl-'));
+  try {
+    const body = Buffer.alloc(5000, 1);
+    const honest: Fetch = async () => new Response(body, { headers: { 'content-length': String(body.length) } });
+    // chunked, no length: the count on the way is what stops it
+    const silent: Fetch = async () =>
+      new Response(
+        new ReadableStream({
+          start(c) {
+            for (let i = 0; i < 5; i++) c.enqueue(new Uint8Array(1000).fill(1));
+            c.close();
+          },
+        }),
+      );
+    const file = join(dir, 'x.deb');
+    await assert.rejects(download(honest, 'https://example.test/x.deb', file, 't', 4096), /x\.deb is larger than/);
+    await assert.rejects(readFile(file), 'refused on the header: not even started');
+    await assert.rejects(download(silent, 'https://example.test/x.deb', file, 't', 4096), /x\.deb is larger than/);
+    assert.ok((await readFile(file)).length <= 4096);
+    assert.equal(await download(silent, 'https://example.test/x.deb', file, 't', 5000), createHash('sha256').update(body).digest('hex'));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 });
