@@ -51,6 +51,26 @@ was built for. A drive newer than its agent shows a banner on every page
 asking for the upgrade above, and the Storage pages may misbehave until
 then. An agent newer than its drive is fine: verbs are only ever added.
 
+## What 0.9.2 changes on a box
+
+Small fixes from the same review; no new verbs, the contract stays 2, and
+it pins the same mk-drive 0.9.1.
+
+- A disk fault is not missed after the kernel's ZFS event list starts over
+  (`zpool events -c`, a ZFS module reload without a reboot): the agent's
+  event log starts over with it.
+- A network change that was not kept and that netplan then refuses to put
+  back is tried again (the next look at the page, the agent's start, the
+  timer) instead of being forgotten, and the Network page still opens
+  meanwhile and shows the change as waiting.
+- Two share changes at once are written one after the other, so smb.conf
+  and the exports always hold every share.
+- "mk-nas X is out" is said only for a release newer than the one running.
+- An install from the box stops a download that is larger than a release
+  file of its kind may be (1 MB, 512 MB for the package, 2 GB for the
+  drive's image), before anything is verified or unpacked.
+- The socket's 64 KB limit is per request line, not per burst of requests.
+
 ## What 0.9.1 changes on a box
 
 Fixes from a security and stability review of both repositories; no new
