@@ -1,7 +1,7 @@
 {
   "name": "mk-nasd",
   "private": true,
-  "version": "0.9.2",
+  "version": "0.9.3",
   "type": "module",
   "description": "The mk-nas root agent: an allow-list of ZFS, SMART and share verbs over a Unix socket. Node 24, no build step, no shell.",
   "license": "AGPL-3.0-only",
