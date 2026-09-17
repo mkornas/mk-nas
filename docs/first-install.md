@@ -252,6 +252,12 @@ upgrade does not take it away: see it with `groups`, and if you want the
 password back in front of docker, `sudo gpasswd -d <user> docker` (it takes
 effect at the next login).
 
+The `lxd` group is the same kind of door: Ubuntu puts the first user in it,
+and its `lxd-installer` lets that group install LXD without `sudo`. The
+stick masks `lxd-installer.socket`, so the membership opens nothing. On a
+box installed before that (or on a stock Ubuntu you ran `install.sh` on, where
+it is yours to decide): `sudo systemctl mask --now lxd-installer.socket`.
+
 **Keys only for ssh (recommended once `ssh-copy-id` works).** The install
 leaves password logins on, so the first login works without a key; root
 cannot log in over ssh at all. After `ssh-copy-id`, check that

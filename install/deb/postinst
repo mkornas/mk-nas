@@ -15,7 +15,8 @@ case "$1" in
 
     # Samba and NFS come up when the first share of their kind is made; until then they stay quiet
     if [ -z "$2" ]; then
-      systemctl disable --now smbd nmbd nfs-server >/dev/null 2>&1 || true
+      # rpcbind (port 111 on every address) only serves NFS; nfs-server wants its socket and brings it back with the first NFS share
+      systemctl disable --now smbd nmbd nfs-server rpcbind.socket rpcbind.service >/dev/null 2>&1 || true
     fi
 
     # the mk-drive stack: the compose file is ours to replace (it pins the drive version this release was made with),

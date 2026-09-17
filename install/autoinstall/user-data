@@ -48,6 +48,9 @@ autoinstall:
   late-commands:
     - mkdir -p /target/etc/ssh/sshd_config.d
     - sh -c 'printf "%s\n" "# written by the mk-nas installer - no root login over ssh; log in as yourself and use sudo" "PermitRootLogin no" > /target/etc/ssh/sshd_config.d/10-mk-nas.conf'
+    # Ubuntu puts the first user in the lxd group, and lxd-installer lets that group install LXD without sudo, which is
+    # root without a password (a privileged container with the host's disk). The box runs no LXD: the socket is masked
+    - curtin in-target --target=/target -- systemctl mask lxd-installer.socket
     - mkdir -p /target/opt/mk-nas-src
     - cp -a /cdrom/mk-nas/. /target/opt/mk-nas-src/
     - sh -c 'mv /target/opt/mk-nas-src/install/out/mk-nas_*_amd64.deb /target/opt/mk-nas-src/install/out/mk-nas.deb'
