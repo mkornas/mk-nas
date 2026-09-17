@@ -51,6 +51,39 @@ was built for. A drive newer than its agent shows a banner on every page
 asking for the upgrade above, and the Storage pages may misbehave until
 then. An agent newer than its drive is fine: verbs are only ever added.
 
+## What 0.9.1 changes on a box
+
+Fixes from a security and stability review of both repositories; no new
+verbs, the contract stays 2. It pins mk-drive 0.9.1.
+
+- **Copies name their snapshots `repl-<id>-<stamp>`** and each copy prunes
+  only its own, so two copies of one dataset no longer remove each other's
+  base. The `repl-<stamp>` snapshots from before stay the base of the next
+  incremental send (no full resend) and are pruned only while the dataset
+  has a single copy; with two, remove the old ones by hand when you like.
+- An automatic snapshot that cannot be taken (a full pool) no longer costs
+  the one it would have replaced: the old one goes only once the new one
+  exists.
+- A full or unwritable `/var/log` no longer stops the agent: an audit line
+  that cannot be written goes to the journal (`journalctl -u mk-nasd`)
+  and the verb's answer stands.
+- A dataset called `global`, `homes` or `printers` cannot be shared over
+  SMB (those names are smb.conf's own), nor can two datasets whose last
+  name is the same. A share stored that way before is left out of smb.conf
+  and the journal says so.
+- A second location with the name of an existing one is refused instead of
+  mounting over it.
+- Settings are restored only from a dataset that root alone writes to, the
+  same rule the backup itself has.
+- A first install leaves rpcbind (port 111) off until the first NFS share,
+  and the stick masks `lxd-installer.socket`. **A box installed earlier
+  keeps both as they were**: `docs/first-install.md` has the two commands.
+- In the drive: signing in takes equally long whether or not the email has
+  an account; a public link no longer serves names that start with a dot;
+  links and shares follow a file or folder that is renamed or moved in the
+  drive and end when it is deleted (restoring it from the trash does not
+  bring them back).
+
 ## What 0.9.0 changes on a box
 
 - **The box says when something is wrong.** The agent keeps a list of

@@ -258,6 +258,11 @@ stick masks `lxd-installer.socket`, so the membership opens nothing. On a
 box installed before that (or on a stock Ubuntu you ran `install.sh` on, where
 it is yours to decide): `sudo systemctl mask --now lxd-installer.socket`.
 
+rpcbind (port 111, open to the network) only serves NFS. A first install
+turns it off until the first NFS share; a box installed before 0.9.1 that
+has no NFS share: `sudo systemctl disable --now rpcbind.socket rpcbind.service`
+(making an NFS share later brings it back by itself).
+
 **Keys only for ssh (recommended once `ssh-copy-id` works).** The install
 leaves password logins on, so the first login works without a key; root
 cannot log in over ssh at all. After `ssh-copy-id`, check that
