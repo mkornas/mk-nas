@@ -22,7 +22,9 @@ to `docs/` as one file each.
 ## Layout
 
 - `agent/` — `mk-nasd`: Node 24 type-stripping (`import './x.ts'`, no build),
-  runs as root as a systemd service, listens on `/run/mk-nas.sock`, exposes
+  runs as root as a systemd service, listens on `/run/mk-nas.sock` (handed over
+  by `mk-nasd.socket`, so the file survives agent restarts and the drive's
+  container keeps its mount; `docs/agent-boundary.md`), exposes
   an allow-list of verbs as newline-delimited JSON. `src/verbs.ts` is the
   allow-list, `src/names.ts` the only way a caller's value becomes an argv
   element, `src/run.ts` the only way a command runs (execFile, no shell),

@@ -15,7 +15,7 @@ import { reconcileScans } from './scans.ts';
 import { Vitals } from './system.ts';
 import { run } from './run.ts';
 import { reapply } from './shares.ts';
-import { listen } from './server.ts';
+import { listen, systemdFd } from './server.ts';
 
 const audit = createAudit(config.audit);
 const db = new Db(config.db);
@@ -45,8 +45,10 @@ const shares = {
   ownerGid: config.ownerGid,
   hostname: hostname(),
 };
+const fd = systemdFd();
 const server = await listen({
   socket: config.socket,
+  fd,
   group: config.group,
   audit,
   deps: {
@@ -86,7 +88,7 @@ const server = await listen({
     shares,
   },
 });
-console.error(`mk-nasd ${config.version} on ${config.socket}`);
+console.error(`mk-nasd ${config.version} on ${config.socket}${fd === null ? '' : ' (from systemd)'}`);
 // smb.conf and the exports as this version writes them (an upgrade can change a rule); nothing when they already are
 reapply((a, o) => run(a, { timeout: config.timeout, ...o }), db, shares).then(
   (changed) => changed && console.error('share files rewritten for this version'),

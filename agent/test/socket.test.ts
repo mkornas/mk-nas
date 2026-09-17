@@ -1,11 +1,13 @@
 /** The wire: NDJSON over a Unix socket, ids matched, bad lines answered. */
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { connect, type Server } from 'node:net';
 import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { handle, listen } from '../src/server.ts';
+import { handle, listen, systemdFd } from '../src/server.ts';
 import type { Runner } from '../src/run.ts';
 import { Db } from '../src/db.ts';
 import type { ShareConfig } from '../src/shares.ts';
@@ -157,3 +159,44 @@ test('the 64 KB limit is per line: a burst of requests larger than that is answe
   });
   assert.match(endless, /line too long/);
 });
+
+test('systemdFd: descriptor 3 only when LISTEN_FDS is meant for this process', () => {
+  assert.equal(systemdFd({ LISTEN_PID: '42', LISTEN_FDS: '1' }, 42), 3);
+  assert.equal(systemdFd({ LISTEN_PID: '41', LISTEN_FDS: '1' }, 42), null, 'inherited from a parent: not ours');
+  assert.equal(systemdFd({ LISTEN_PID: '42', LISTEN_FDS: '0' }, 42), null);
+  assert.equal(systemdFd({}, 42), null);
+});
+
+const activate = ['/usr/bin/systemd-socket-activate', '/bin/systemd-socket-activate'].find((p) => existsSync(p));
+
+test(
+  'a socket handed over by systemd: the agent answers on it and leaves the file alone when it goes',
+  { skip: activate ? false : 'needs systemd-socket-activate' },
+  async () => {
+    const path = join(dir, 'activated.sock');
+    const fixture = new URL('./fixtures/activated.ts', import.meta.url).pathname;
+    const child = spawn(activate!, ['-l', path, process.execPath, fixture], { stdio: 'ignore', env: { ...process.env, NODE_NO_WARNINGS: '1' } });
+    try {
+      for (let i = 0; i < 100 && !existsSync(path); i++) await new Promise((r) => setTimeout(r, 20));
+      const before = await stat(path);
+      const ask = () =>
+        new Promise<Record<string, unknown>>((resolve, reject) => {
+          const c = connect(path);
+          c.setEncoding('utf8');
+          c.on('connect', () => c.write(JSON.stringify({ id: 1, verb: 'policies' }) + '\n'));
+          c.on('data', (d: string) => (c.end(), resolve(JSON.parse(d))));
+          c.on('error', reject);
+        });
+      // the first call is what starts the agent, and it waited for it instead of failing
+      assert.deepEqual(await ask(), { id: 1, ok: true, result: [] });
+      assert.deepEqual(await ask(), { id: 1, ok: true, result: [] });
+      const gone = new Promise((r) => child.once('exit', r));
+      child.kill('SIGTERM');
+      await gone;
+      const after = await stat(path);
+      assert.equal(after.ino, before.ino, 'the same file: a container that has it mounted still reaches the next agent');
+    } finally {
+      child.kill('SIGKILL');
+    }
+  },
+);

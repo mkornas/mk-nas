@@ -143,8 +143,27 @@ function gidOf(group: string): number | null {
   }
 }
 
-export function listen(opts: ServerOptions): Promise<Server> {
+/**
+ * The listening socket systemd hands over (mk-nasd.socket): descriptor 3 when LISTEN_FDS names one for this very
+ * process, else null (a terminal, the tests, a box from before the socket unit) and the agent makes the socket itself.
+ */
+export function systemdFd(env: NodeJS.ProcessEnv = process.env, pid = process.pid): number | null {
+  return Number(env.LISTEN_PID) === pid && Number(env.LISTEN_FDS) >= 1 ? 3 : null;
+}
+
+export function listen(opts: ServerOptions & { fd?: number | null }): Promise<Server> {
   const server = createServer((sock) => serve(sock, opts));
+  const fd = opts.fd ?? null;
+  if (fd !== null) {
+    // systemd's socket: its path, owner and mode are the unit's, and it outlives this process, so nothing is unlinked or chmodded
+    return new Promise((resolve, reject) => {
+      server.once('error', reject);
+      server.listen({ fd }, () => {
+        server.off('error', reject);
+        resolve(server);
+      });
+    });
+  }
   if (existsSync(opts.socket)) unlinkSync(opts.socket);
   return new Promise((resolve, reject) => {
     server.once('error', reject);

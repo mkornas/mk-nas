@@ -1,8 +1,10 @@
 [Unit]
 Description=mk-drive (the NAS console) as a compose stack
-Requires=docker.service mk-nasd.service
-After=docker.service mk-nasd.service network-online.target
-Wants=network-online.target
+# the socket file must be there before the container mounts it (docker would make a directory in its place); the agent
+# itself is only wanted: it restarts on every mk-nas update, and the stack must not go down with it
+Requires=docker.service mk-nasd.socket
+After=docker.service mk-nasd.socket mk-nasd.service network-online.target
+Wants=mk-nasd.service network-online.target
 
 [Service]
 Type=oneshot

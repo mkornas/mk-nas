@@ -152,7 +152,7 @@ everything up.
 
 | Where | What |
 | --- | --- |
-| `/run/mk-nas.sock` | The agent's socket, group `mk-nas`, mode 0660 |
+| `/run/mk-nas.sock` | The agent's socket, group `mk-nas`, mode 0660; held by systemd (`mk-nasd.socket`), so it stays the same file across agent restarts |
 | `/var/lib/mk-nas/mk-nas.db` | Shares, policies, jobs, alerts, SMB users |
 | `/var/log/mk-nas/audit.jsonl` | Every call, rotated weekly ×12 (passwords redacted) |
 | `/var/lib/mk-nas/ssh/` | The replication key and its own `known_hosts` |

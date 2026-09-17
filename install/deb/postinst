@@ -73,15 +73,23 @@ ENV
     fi
 
     # a box set up by the pre-package install.sh has copies of the units in /etc; the package's own are in /lib
-    for u in mk-nasd.service mk-nas-snapshot.service mk-nas-snapshot.timer mk-nas-replication.service mk-nas-replication.timer mk-drive.service; do
+    for u in mk-nasd.service mk-nasd.socket mk-nas-snapshot.service mk-nas-snapshot.timer mk-nas-replication.service mk-nas-replication.timer mk-drive.service; do
       [ -f "/etc/systemd/system/$u" ] && [ ! -L "/etc/systemd/system/$u" ] && rm -f "/etc/systemd/system/$u"
     done
     [ -L /usr/local/bin/mk-nas ] && rm -f /usr/local/bin/mk-nas
 
     systemctl daemon-reload 2>/dev/null || true
-    systemctl enable mk-nasd mk-nas-snapshot.timer mk-nas-replication.timer mk-drive docker >/dev/null 2>&1 || true
+    systemctl enable mk-nasd.socket mk-nasd mk-nas-snapshot.timer mk-nas-replication.timer mk-drive docker >/dev/null 2>&1 || true
     # inside an installer's chroot there is no systemd to talk to; the units start on first boot
     if [ "$(stat -c %d:%i /)" = "$(stat -c %d:%i /proc/1/root/. 2>/dev/null)" ]; then
+      # the agent's socket is systemd's (mk-nasd.socket), so its file stays the same across agent restarts and the drive's
+      # container keeps reaching it. Coming from a release where the agent made the socket itself, the agent stops once
+      # for the unit to take the path over; that one time the file changes, and the drive must start again to see it
+      if ! systemctl is-active --quiet mk-nasd.socket; then
+        systemctl stop mk-nasd 2>/dev/null || true
+        systemctl start mk-nasd.socket
+        stack_changed=1
+      fi
       systemctl restart mk-nasd
       systemctl start mk-nas-snapshot.timer mk-nas-replication.timer
       # mk-drive.service is a oneshot that stays active: start alone would never bring a newly pinned image up

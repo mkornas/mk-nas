@@ -7,6 +7,15 @@ on it. Amend this file if the author decides otherwise.
   `/run/mk-nas.sock`. The socket is owned by root, group `mk-nas`, mode 0660.
   The mk-drive container runs with that group and mounts the socket. That
   mount is the only privilege it ever has.
+- The socket belongs to systemd (`mk-nasd.socket`), which hands it to the
+  agent on every start. The file, and its inode, therefore stay the same while
+  the agent restarts, and the container, which has that one file
+  bind-mounted, keeps reaching it: an agent-only update does not restart the
+  drive, and a call made in between waits for the next agent instead of
+  failing. The price is that a stopped agent is started again by the next
+  call; to keep it down, stop `mk-nasd.socket` as well (the drive must then
+  be restarted afterwards, since the file is made anew). Started by hand or
+  in tests, with no socket handed over, the agent makes the socket itself.
 - The protocol is newline-delimited JSON: `{ id, verb, args }` in,
   `{ id, ok, result }` or `{ id, ok: false, error: { code, message } }` out.
   One connection may carry many requests; answers carry the request's `id`.

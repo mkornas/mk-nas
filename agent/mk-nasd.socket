@@ -1,0 +1,14 @@
+[Unit]
+Description=mk-nas agent socket (/run/mk-nas.sock)
+# systemd holds the listening socket, not the agent: the file (and its inode) stays the same while the agent restarts, so
+# the drive's container, which has this one file bind-mounted, keeps reaching it, and a call made meanwhile waits in the
+# queue instead of failing. An agent-only update therefore does not restart the drive.
+
+[Socket]
+ListenStream=/run/mk-nas.sock
+SocketUser=root
+SocketGroup=mk-nas
+SocketMode=0660
+
+[Install]
+WantedBy=sockets.target

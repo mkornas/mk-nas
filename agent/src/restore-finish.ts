@@ -20,7 +20,8 @@ const now = new Date();
 await new Promise((r) => setTimeout(r, 1500));
 const steps: string[] = [];
 try {
-  await must(run, ['systemctl', 'stop', 'mk-nasd', 'mk-drive']);
+  // the socket unit too: left up, a call arriving now (the drive, the CLI) would start the agent in the middle of the swap
+  await must(run, ['systemctl', 'stop', 'mk-drive', 'mk-nasd.socket', 'mk-nasd']);
   for (const file of [config.db, config.driveDb]) {
     const restored = `${file}.restore`;
     // the drive's data directory is the container's, which could leave a link at either name: never follow one
@@ -62,11 +63,11 @@ try {
   } finally {
     db.close();
   }
-  await must(run, ['systemctl', 'start', 'mk-nasd', 'mk-drive']);
+  await must(run, ['systemctl', 'start', 'mk-nasd.socket', 'mk-nasd', 'mk-drive']);
   await audit({ ts: now.toISOString(), verb: 'restore.finish', args: { steps }, ok: true, ms: Date.now() - now.getTime() });
 } catch (e) {
   await audit({ ts: now.toISOString(), verb: 'restore.finish', args: { steps }, ok: false, ms: Date.now() - now.getTime(), error: (e as Error).message });
   // whatever happened, the services must not stay down
-  await run(['systemctl', 'start', 'mk-nasd', 'mk-drive']);
+  await run(['systemctl', 'start', 'mk-nasd.socket', 'mk-nasd', 'mk-drive']);
   process.exit(1);
 }

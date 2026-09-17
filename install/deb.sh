@@ -31,7 +31,7 @@ stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT
 mkdir -p "$stage/DEBIAN" "$stage/opt/mk-nas/node" "$stage/opt/mk-nas/install/mk-drive" "$stage/lib/systemd/system" "$stage/usr/bin" "$stage/etc/logrotate.d" "$stage/usr/share/bash-completion/completions" "$stage/usr/share/zsh/vendor-completions"
 cp -a "$repo/agent" "$repo/shared" "$stage/opt/mk-nas/"
-rm -rf "$stage/opt/mk-nas/agent/node_modules" "$stage/opt/mk-nas/agent/test" "$stage/opt/mk-nas/agent/"*.service "$stage/opt/mk-nas/agent/"*.timer
+rm -rf "$stage/opt/mk-nas/agent/node_modules" "$stage/opt/mk-nas/agent/test" "$stage/opt/mk-nas/agent/"*.service "$stage/opt/mk-nas/agent/"*.socket "$stage/opt/mk-nas/agent/"*.timer
 tar -xJf "$tarball" -C "$stage/opt/mk-nas/node" --strip-components=1
 rm -rf "$stage/opt/mk-nas/node/include" "$stage/opt/mk-nas/node/share" "$stage/opt/mk-nas/node/lib/node_modules/npm/docs"
 cp "$here/load-image.sh" "$here/stack-up.sh" "$here/release-signers" "$stage/opt/mk-nas/install/"
@@ -43,7 +43,7 @@ echo "$drive_version" > "$stage/opt/mk-nas/install/mk-drive/version"
 grep -qE "^[0-9a-f]{64}  mk-drive-$drive_version\.tgz\$" "$here/mk-drive/sha256" 2>/dev/null ||
   { echo "deb.sh: install/mk-drive/sha256 does not name mk-drive-$drive_version.tgz; install/release.sh --drive $drive_version writes it" >&2; exit 1; }
 cp "$here/mk-drive/sha256" "$stage/opt/mk-nas/install/mk-drive/sha256"
-cp "$repo/agent/mk-nasd.service" "$repo/agent/mk-nas-snapshot.service" "$repo/agent/mk-nas-snapshot.timer" "$repo/agent/mk-nas-replication.service" "$repo/agent/mk-nas-replication.timer" "$here/mk-drive.service" "$stage/lib/systemd/system/"
+cp "$repo/agent/mk-nasd.service" "$repo/agent/mk-nasd.socket" "$repo/agent/mk-nas-snapshot.service" "$repo/agent/mk-nas-snapshot.timer" "$repo/agent/mk-nas-replication.service" "$repo/agent/mk-nas-replication.timer" "$here/mk-drive.service" "$stage/lib/systemd/system/"
 ln -s /opt/mk-nas/agent/src/cli.ts "$stage/usr/bin/mk-nas"
 cp "$here/deb/mk-nas.logrotate" "$stage/etc/logrotate.d/mk-nas"
 cp "$here/completion/mk-nas.bash" "$stage/usr/share/bash-completion/completions/mk-nas"

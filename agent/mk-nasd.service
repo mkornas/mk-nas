@@ -1,7 +1,10 @@
 [Unit]
 Description=mk-nas agent (mk-nasd)
-After=zfs.target
+After=zfs.target mk-nasd.socket
 Wants=zfs.target
+# the socket is systemd's (mk-nasd.socket) and is handed over on every start; the agent still runs all the time
+# (timers, alerts, the events tail), not only when someone connects
+Requires=mk-nasd.socket
 
 [Service]
 Type=simple

@@ -51,6 +51,25 @@ was built for. A drive newer than its agent shows a banner on every page
 asking for the upgrade above, and the Storage pages may misbehave until
 then. An agent newer than its drive is fine: verbs are only ever added.
 
+## What 0.9.3 changes on a box
+
+- **An mk-nas update that does not change the drive no longer restarts it.**
+  Until now every agent restart took the whole stack down with it (the drive
+  and the tunnel, about half a minute), because `mk-drive.service` required
+  `mk-nasd.service`. The agent's socket is now systemd's (`mk-nasd.socket`):
+  the file stays the same while the agent restarts, the drive's container
+  keeps reaching it, and a call made in between waits a moment instead of
+  failing. The drive still restarts when the release pins another drive
+  version or changes its stack file.
+- **This one update restarts the drive once more**: the socket changes hands
+  from the agent to systemd, the file is made anew, and the container has to
+  mount the new one.
+- `systemctl stop mk-nasd` alone no longer keeps the agent down: the next
+  call from the drive or `mk-nas` starts it again (systemd says so when you
+  stop it). To keep it down: `sudo systemctl stop mk-nasd.socket mk-nasd`,
+  and afterwards `sudo systemctl start mk-nasd.socket mk-nasd` and
+  `sudo systemctl restart mk-drive`.
+
 ## What 0.9.2 changes on a box
 
 Small fixes from the same review; no new verbs, the contract stays 2, and
