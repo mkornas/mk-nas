@@ -1,0 +1,3 @@
+# Security and stability audit after going public
+
+- 2026-09-17 15:26 — Six fixes, each with a test, merged to main (3ab1310..daa3b7c) and shipped in 0.9.1; npm audit clean, no private hosts or secrets in tracked files. Found nothing that lets a caller without admin reach root, inject arguments or tamper with an update. Not read line by line: cli.ts, zfs.ts, alerts.ts, events.ts, system.ts. Minor, left as they are: network revert() forgets itself when netplan fails, apply() in shares.ts uses one temp name, the 64 KB socket limit counts the whole buffer, update downloads have no size cap. — main @ ad67d62 mk-nas 0.9.1 (pins mk-drive 0.9.1)
