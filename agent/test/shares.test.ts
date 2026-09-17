@@ -498,3 +498,76 @@ test('removing an SMB user takes them off every share list, so a later account w
   assert.equal(db.dropSmbUserFromShares('alice'), false);
   db.close();
 });
+
+test("share names: never one of Samba's own sections, never the same as another SMB share's; NFS alone does not care; a restored row is left out", async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'mk-nas-shares-'));
+  const audit = async () => {};
+  const mounted = ['tank/global', 'tank/Homes', 'tank/a/docs', 'tank/b/docs', 'tank/b/Docs'];
+  const db = new Db(':memory:');
+  try {
+    const f = fake({
+      [DS]: mounted.map((d) => row(d, `/${d}`)).join(''),
+      ...Object.fromEntries(mounted.map((d) => [`${DS} -r ${d}`, row(d, `/${d}`)])),
+      'getent passwd 1000': 'alice:x:1000:1000::/home/alice:/bin/bash\n',
+      'getent group 1000': 'alice:x:1000:\n',
+      'systemctl *': '',
+      'smbcontrol *': '',
+      'exportfs *': '',
+    });
+    const deps: Deps = {
+      run: f.run,
+      version: 't',
+      db,
+      locationsDir: '/srv/locations',
+      shares: cfg(dir),
+      replication: { keyFile: join(dir, 'key'), knownHosts: join(dir, 'kh') },
+      spawn: () => {},
+      network: NET,
+      backup: BKP,
+    };
+    const set = (args: Record<string, unknown>) => handle({ id: 1, verb: 'share.set', args }, deps, audit);
+    const refused = async (args: Record<string, unknown>, why: RegExp) => {
+      const res = await set(args);
+      assert.equal(res.ok, false, JSON.stringify(res));
+      if (!res.ok) {
+        assert.equal(res.error.code, 'bad-args');
+        assert.match(res.error.message, why);
+      }
+    };
+    await refused({ dataset: 'tank/global', smb: true }, /keeps the name "global"/);
+    await refused({ dataset: 'tank/Homes', smb: true }, /keeps the name "Homes"/);
+    assert.equal(db.shares().length, 0);
+    // over NFS the name is never written anywhere
+    assert.equal((await set({ dataset: 'tank/global', nfs: true, nfsClients: ['192.168.1.0/24'] })).ok, true);
+    await refused({ dataset: 'tank/global', smb: true }, /keeps the name/);
+
+    assert.equal((await set({ dataset: 'tank/a/docs', smb: true })).ok, true);
+    await refused({ dataset: 'tank/b/docs', smb: true }, /tank\/a\/docs is already shared over SMB as "docs"/);
+    await refused({ dataset: 'tank/b/Docs', smb: true }, /already shared/);
+    // changing the share that holds the name is not a clash with itself
+    assert.equal((await set({ dataset: 'tank/a/docs', smb: true, timeMachine: true })).ok, true);
+    assert.deepEqual(
+      [...(await readFile(join(dir, 'smb.conf'), 'utf8')).matchAll(/^\[(.+)\]$/gm)].map((m) => m[1]),
+      ['global', 'docs'],
+    );
+
+    // rows share.set would refuse (a restored database) never reach smb.conf
+    db.setShare({ dataset: 'tank/b/docs', smb: true, timeMachine: false, nfs: false, nfsClients: [], smbAccess: null });
+    db.setShare({ dataset: 'tank/Homes', smb: true, timeMachine: false, nfs: false, nfsClients: [], smbAccess: null });
+    const errors: string[] = [];
+    const original = console.error;
+    console.error = (m: string) => void errors.push(m);
+    try {
+      assert.deepEqual(
+        (await listShares(f.run, db)).filter((s) => s.smb).map((s) => s.dataset),
+        ['tank/a/docs'],
+      );
+      assert.equal(errors.length, 2);
+    } finally {
+      console.error = original;
+    }
+  } finally {
+    db.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});

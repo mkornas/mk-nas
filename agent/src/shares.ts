@@ -36,6 +36,16 @@ export function nfsClient(v: unknown): string {
   return v;
 }
 
+/** Section names smb.conf keeps for itself: a share called [global] would set every share's defaults. Samba compares them without case. */
+const RESERVED = ['global', 'homes', 'printers'];
+
+/** The SMB name of a dataset's share (its last component), refused when smb.conf would read it as something else. */
+export function smbShareName(dataset: string): string {
+  const name = dataset.split('/').pop()!;
+  if (RESERVED.includes(name.toLowerCase())) throw new BadArgs(`${dataset}: Samba keeps the name "${name}" for itself; share a dataset with another name`);
+  return name;
+}
+
 /** A share's SMB list as share.set takes it: known user names, one entry each, read or write. */
 export function smbAccessOf(v: unknown): SmbAccess[] {
   if (!Array.isArray(v) || v.length > 200) throw new BadArgs('smbAccess must be a list of { user, level }');
@@ -147,11 +157,17 @@ async function writeAtomically(file: string, text: string): Promise<void> {
 export async function listShares(run: Runner, db: Db): Promise<Share[]> {
   // rows can come from a restored database: a name or an NFS client that share.set would refuse never reaches smb.conf or
   // the exports (a client like *(rw,no_root_squash) would hand out root over NFS); such a share is left out and logged
+  const names = new Set<string>();
   const stored = db.shares().filter((s) => {
     try {
       datasetName(s.dataset);
       s.nfsClients.forEach(nfsClient);
       if (s.smbAccess !== null) smbAccessOf(s.smbAccess);
+      if (s.smb) {
+        const name = smbShareName(s.dataset).toLowerCase();
+        if (names.has(name)) throw new BadArgs(`another share is already called "${name}"`);
+        names.add(name);
+      }
       return true;
     } catch (e) {
       console.error(`share ${JSON.stringify(s.dataset)} skipped: ${(e as Error).message}`);
@@ -227,6 +243,12 @@ export async function setShare(run: Runner, db: Db, cfg: ShareConfig, a: ShareSe
   if (nfs && nfsClients.length === 0 && (a.nfs !== undefined || a.nfsClients !== undefined))
     throw new BadArgs('name the hosts or networks allowed to mount it');
   const smbAccess = a.smbAccess === undefined ? (before?.smbAccess ?? null) : smbAccessOf(a.smbAccess);
+  if (smb) {
+    // the section name is the dataset's last component: never one of Samba's own, never the same as another share's
+    const name = smbShareName(dataset).toLowerCase();
+    const other = db.shares().find((s) => s.smb && s.dataset !== dataset && s.dataset.split('/').pop()!.toLowerCase() === name);
+    if (other) throw new BadArgs(`${other.dataset} is already shared over SMB as "${other.dataset.split('/').pop()}"; two shares cannot have one name`);
+  }
   if (!smb && !nfs) {
     db.removeShare(dataset);
     await apply(run, db, cfg);
