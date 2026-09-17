@@ -210,6 +210,27 @@ test('network.set: refusals never touch anything; the hostname goes through host
 
     // not kept in time: the previous file comes back and netplan applies again
     assert.equal(await revertIfExpired(f.run, net, new Date(Date.now() + 29_000)), false, 'not yet');
+    // a revert netplan refuses is not forgotten: the note stays, the page still reads, and the next try does it
+    const failing: Runner = (argv, o) =>
+      argv.join(' ') === 'netplan apply' ? Promise.resolve({ argv, exitCode: 1, stdout: '', stderr: 'networkd is not running\n' }) : f.run(argv, o);
+    await assert.rejects(revertIfExpired(failing, net, new Date(Date.now() + 31_000)), /networkd is not running/);
+    assert.ok(await stat(net.pendingFile), 'still promised');
+    await writeFile(net.pendingFile, JSON.stringify({ ...JSON.parse(await readFile(net.pendingFile, 'utf8')), expiresAt: new Date(0).toISOString() }));
+    const errors: string[] = [];
+    const error = console.error;
+    console.error = (m: string) => void errors.push(m);
+    try {
+      res = await handle({ id: 6, verb: 'network' }, deps(failing, net), audit);
+    } finally {
+      console.error = error;
+    }
+    assert.equal(res.ok, true, JSON.stringify(res));
+    assert.equal(res.ok && (res.result as Network).pending?.interface, 'wlp0s20f3');
+    assert.match(errors[0] ?? '', /network revert failed/);
+    await writeFile(
+      net.pendingFile,
+      JSON.stringify({ ...JSON.parse(await readFile(net.pendingFile, 'utf8')), expiresAt: new Date(Date.now() + 30_000).toISOString() }),
+    );
     f.calls.length = 0;
     assert.equal(await revertIfExpired(f.run, net, new Date(Date.now() + 31_000)), true);
     assert.deepEqual([...parseOwn(await readFile(net.netplanFile, 'utf8')).keys()], ['enp3s0']);

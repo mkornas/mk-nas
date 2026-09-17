@@ -190,8 +190,9 @@ async function applyFile(run: Runner, cfg: NetConfig, content: string | null): P
 export async function revert(run: Runner, cfg: NetConfig): Promise<boolean> {
   const p = await pending(cfg);
   if (!p) return false;
-  await rm(cfg.pendingFile, { force: true });
+  // the note goes only once netplan took the old file: a revert that failed is tried again (the next read, start or tick)
   await applyFile(run, cfg, p.previous);
+  await rm(cfg.pendingFile, { force: true });
   return true;
 }
 

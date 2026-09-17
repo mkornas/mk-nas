@@ -272,8 +272,8 @@ export const verbs: { [V in Verb]: Handler<V> } = {
   },
   async network(args, deps) {
     only(args, []);
-    // the promised revert, in case the timer's tick has not come round yet
-    await revertIfExpired(deps.run, deps.network);
+    // the promised revert, in case the timer's tick has not come round yet; one that fails is tried again later and must not hide the page
+    await revertIfExpired(deps.run, deps.network).catch((e: Error) => console.error(`network revert failed: ${e.message}`));
     return readNetwork(deps.run, deps.network);
   },
   async 'network.set'(args, deps) {
