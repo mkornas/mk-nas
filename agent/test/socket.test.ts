@@ -136,3 +136,24 @@ test('an audit that cannot be written (a full disk) does not change the answer o
   assert.equal(lines.length, 3);
   assert.match(lines[0], /^audit not written \(ENOSPC.*"verb":"policies"/);
 });
+
+test('the 64 KB limit is per line: a burst of requests larger than that is answered whole, one over-long line is refused', async () => {
+  const pad = 'x'.repeat(3000);
+  const burst = Array.from({ length: 40 }, (_, i) => JSON.stringify({ id: i, verb: 'pools', pad }));
+  assert.ok(burst.join('\n').length > 64 * 1024);
+  const res = await talk(burst, 40);
+  assert.equal(res.filter((r) => r.ok === true).length, 40);
+  const long = await talk([JSON.stringify({ id: 1, verb: 'pools', pad: 'x'.repeat(70 * 1024) })], 1);
+  assert.deepEqual(long[0], { id: null, ok: false, error: { code: 'bad-request', message: 'line too long' } });
+  // a line that never ends is cut off as soon as it is too long, without waiting for its newline
+  const endless = await new Promise<string>((resolve, reject) => {
+    const c = connect(sockPath);
+    let got = '';
+    c.setEncoding('utf8');
+    c.on('connect', () => c.write('y'.repeat(70 * 1024)));
+    c.on('data', (d: string) => (got += d));
+    c.on('close', () => resolve(got));
+    c.on('error', reject);
+  });
+  assert.match(endless, /line too long/);
+});

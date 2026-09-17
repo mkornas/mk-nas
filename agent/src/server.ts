@@ -108,13 +108,14 @@ function serve(sock: Socket, opts: ServerOptions): void {
   sock.setEncoding('utf8');
   sock.on('data', (chunk: string) => {
     buf += chunk;
-    if (buf.length > MAX_LINE) {
+    const tooLong = () => {
       send({ id: null, ok: false, error: { code: 'bad-request', message: 'line too long' } });
       sock.destroy();
-      return;
-    }
+    };
     let nl: number;
     while ((nl = buf.indexOf('\n')) >= 0) {
+      // the limit is per line: several requests arriving in one burst are each judged on their own
+      if (nl > MAX_LINE) return tooLong();
       const line = buf.slice(0, nl).trim();
       buf = buf.slice(nl + 1);
       if (!line) continue;
@@ -125,6 +126,8 @@ function serve(sock: Socket, opts: ServerOptions): void {
       }
       void handle(req, opts.deps, opts.audit).then(send);
     }
+    // what is left is a line still on its way
+    if (buf.length > MAX_LINE) tooLong();
   });
   sock.on('error', () => sock.destroy());
 }
