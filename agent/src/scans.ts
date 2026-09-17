@@ -7,6 +7,7 @@
  */
 import type { Job } from '../../shared/types.ts';
 import type { Db } from './db.ts';
+import { poolName } from './names.ts';
 import type { Runner } from './run.ts';
 import { getPool } from './zfs.ts';
 
@@ -20,7 +21,8 @@ export async function reconcileScans(run: Runner, db: Db): Promise<void> {
   for (const job of db.runningScans()) {
     let scrub;
     try {
-      scrub = (await getPool(run, job.pool!)).scrub;
+      // the row may come from a restored database: its pool is checked like any caller's before it reaches zpool
+      scrub = (await getPool(run, poolName(job.pool))).scrub;
     } catch (e) {
       db.finishJob(job.id, 'failed', `the pool could not be read: ${(e as Error).message}`);
       continue;

@@ -6,6 +6,7 @@ import { mkdir, mkdtemp, rm, stat, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Db } from '../src/db.ts';
+import { reconcileScans } from '../src/scans.ts';
 import type { ShareConfig } from '../src/shares.ts';
 const REPL = { keyFile: '/tmp/never-written.key', knownHosts: '/tmp/never-written.known_hosts' };
 const NOSPAWN = () => {};
@@ -448,4 +449,24 @@ test('policy.set: stored per existing dataset, all zeros removes it, counts are 
   assert.equal(d.db.policies().length, 0);
   const list = await handle({ id: 5, verb: 'policies' }, d, audit);
   assert.deepEqual(list.ok && list.result, []);
+});
+
+test('a scan job from a restored database with a pool name no verb would take: failed without a command, never an argv', async () => {
+  const db = new Db(':memory:');
+  try {
+    db.startScan('scrub', '-o evil');
+    const calls: string[][] = [];
+    const run: Runner = async (argv) => {
+      calls.push(argv);
+      return { argv, exitCode: 0, stdout: '', stderr: '' };
+    };
+    await reconcileScans(run, db);
+    assert.deepEqual(calls, []);
+    assert.equal(db.runningScans().length, 0);
+    const [job] = db.scanJobs();
+    assert.equal(job.state, 'failed');
+    assert.match(job.message ?? '', /not a pool name/);
+  } finally {
+    db.close();
+  }
 });
