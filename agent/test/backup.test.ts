@@ -224,6 +224,7 @@ test('restore: only regular files from the backup, and no link at a destination 
     const mp = join(dir, 'tank', 'config');
     const src = join(mp, DIR);
     await mkdir(join(src, 'ssh'), { recursive: true });
+    await chmod(mp, 0o755); // a dataset only root writes to, whatever the umask here; what is in it is still not trusted
     const files = ['mk-nas.db', 'mk-drive.db', 'ssh/id_ed25519', 'mk-drive.env'];
     await writeFile(join(src, 'manifest.json'), JSON.stringify({ at: '2026-09-15T00:00:00.000Z', hostname: 'nas', files }));
     await writeFile(join(src, 'mk-nas.db'), 'AGENT-DB');
@@ -309,6 +310,12 @@ test('backup: a dataset anyone but root can write (a location) is refused', asyn
         : { argv, exitCode: 1, stdout: '', stderr: 'fake: no such command' };
     const cfg = { db: '', sshKey: '', knownHosts: '', netplanFile: '', driveEnv: '', driveDb: '', spawn: () => {} };
     await assert.rejects(setBackup(run, db, cfg, 'tank/photos'), /others can write to it/);
+    // a restore neither: whoever writes there could have planted a backup, with their ssh key and Samba passwords in it
+    await mkdir(join(mp, 'mk-nas-config'));
+    await writeFile(join(mp, 'mk-nas-config', 'manifest.json'), JSON.stringify({ at: '2026-09-12T00:00:00Z', hostname: 'x', files: ['mk-nas.db'] }));
+    let spawned = 0;
+    await assert.rejects(restoreBackup(run, { ...cfg, spawn: () => void spawned++ }, 'tank/photos', 'tank/photos'), /others can write to it/);
+    assert.equal(spawned, 0);
     await chmod(mp, 0o755);
     assert.equal((await setBackup(run, db, cfg, 'tank/photos')).dataset, 'tank/photos');
     db.close();

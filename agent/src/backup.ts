@@ -330,6 +330,9 @@ export async function restoreBackup(
   const name = datasetName(dataset);
   confirmed(confirm, name);
   const mp = await mountpointOf(run, name);
+  // what a restore puts back runs the box (the ssh key, where copies go, Samba's passwords): only from a dataset that
+  // could hold a backup in the first place, never from one where someone else could have left a directory of that name
+  await rootOnly(mp, name);
   const dir = join(mp, DIR);
   const m = await readManifest(dir);
   if (!m) throw new BadArgs(`${name} holds no settings backup`);
