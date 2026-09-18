@@ -1,6 +1,6 @@
 ---
 kanban-plugin: board
-updated: 2026-09-17
+updated: 2026-09-18
 ---
 
 # mk-nas
@@ -80,3 +80,4 @@ One card per line, ranked top-down inside each column. `#p0`..`#p3` = priority, 
 - [x] *The stick carries the mk-drive image** make iso saves ghcr.io/mkornas/mk-drive (or DRIVE_IMAGE) with docker save into /mk-nas/mk-drive-image.tgz; install.sh copies it, mk-drive.service loads it before the first compose up; the image stays private on ghcr and updates need docker login on the NAS #p1 #install [[the-stick-carries-the-mk-drive-image-make-iso-saves-ghcr-io]]
 - [x] **Phase 1b — the stick** make iso: Ubuntu autoinstall remastered with xorriso; asks hostname, admin email, OS disk; installs the agent, Docker and the mk-drive stack; reinstalling the box becomes a coffee break #p1 #phase1 [[phase-1b-the-stick]]
 - [x] **Phase 1 — see** mk-nasd read-only verbs (disks by-id + SMART, pools, datasets, snapshots, scrubs, health) over the socket, audited, tests on a loop-device pool; mk-drive: DRIVE_NAS_SOCKET, /api/nas proxy (admins), Storage → Disks, Pools, Datasets, Snapshots, Health #p1 #phase1 [[phase-1-see]]
+- [x] **Release 0.9.2 and 0.9.3** the audit's small things (0.9.2) and the socket hand-over (0.9.3), both signed, both installed on the pilot box and verified; 0.9.3 was the last update that restarted the drive without a reason #p2
