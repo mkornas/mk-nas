@@ -23,6 +23,8 @@ const input = (over: Partial<ConditionInput> = {}): ConditionInput => ({
   pools: [pool()],
   disks: [disk()],
   open: new Map(),
+  datasets: [],
+  kept: new Set(),
   backup: null,
   replications: [],
   scans: [],
@@ -47,6 +49,18 @@ const open = (over: Partial<StoredAlert>): StoredAlert => ({
 
 test('a healthy box has nothing wrong', () => {
   assert.deepEqual(conditions(input()), []);
+});
+
+test('a dataset with data, no snapshot and no policy is worth a word; an empty one or a kept one is not', () => {
+  const datasets = [
+    { name: 'tank', referenced: 98304 },
+    { name: 'tank/backups', referenced: 3e8 },
+    { name: 'tank/files', referenced: 5e9 },
+    { name: 'tank/new', referenced: 1e6 },
+  ];
+  const got = conditions(input({ datasets, kept: new Set(['tank/files']) }));
+  assert.deepEqual(got.map((c) => [c.key, c.severity]), [['dataset:tank/backups:snapshots', 'info']]);
+  assert.deepEqual(conditions(input({ datasets, kept: new Set(['tank/files', 'tank/backups']) })), []);
 });
 
 test('pools: not ONLINE is critical, full is a warning then critical, each with its own key', () => {

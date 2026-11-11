@@ -16,6 +16,7 @@ what carries them to a person.
 | `scan:<pool>` | the last scrub or resilver did not come back clean | warning |
 | `replication:<id>` | the last copy to another host failed | warning |
 | `backup:settings` | the last settings backup failed | warning |
+| `dataset:<name>:snapshots` | it holds data (64 MB or more), has no snapshot of any kind and no policy to take one | info |
 | `update:available` | a newer signed release is out | info |
 | `update:check` | the box could not reach GitHub to look | info |
 

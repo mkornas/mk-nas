@@ -11,10 +11,10 @@
  * what is true now gives the raises, updates and clears. Only `evaluate()`
  * touches the system and the database.
  */
-import type { Alert, Alerts, AlertSeverity, Disk, Job, PoolSummary, StoredAlert } from '../../shared/types.ts';
+import type { Alert, Alerts, AlertSeverity, Dataset, Disk, Job, PoolSummary, StoredAlert } from '../../shared/types.ts';
 import type { Db } from './db.ts';
 import { listDisks } from './disks.ts';
-import { listPools } from './zfs.ts';
+import { listDatasets, listPools, listSnapshots } from './zfs.ts';
 import { newer } from './updates.ts';
 import type { Runner } from './run.ts';
 
@@ -33,12 +33,17 @@ const HYSTERESIS = 2;
 /** A disk this warm is worth saying something about; it stays raised until it is back under COOL. The health verb uses the same number. */
 export const HOT = 55;
 const COOL = 50;
+/** A dataset holding less than this is a parent or a fresh one: nothing to lose yet, so nothing to say. */
+export const WORTH_KEEPING = 64 * 1024 * 1024;
 
 export interface ConditionInput {
   pools: PoolSummary[];
   disks: Disk[];
   /** Cleared alerts still open, so a raised condition can be held until it truly goes (the hysteresis below). */
   open: Map<string, StoredAlert>;
+  /** Every dataset, and the ones that have a snapshot policy or any snapshot at all (a copy's, the settings backup's, one taken by hand). */
+  datasets: Pick<Dataset, 'name' | 'referenced'>[];
+  kept: Set<string>;
   /** The last settings backup, `db.configBackup()`. */
   backup: { dataset: string; lastAt: string | null; lastResult: 'ok' | 'failed' | null; lastMessage: string | null } | null;
   /** Replications with their last result, `db.replications()`. */
@@ -87,6 +92,17 @@ export function conditions(i: ConditionInput): Condition[] {
     else if ((s.pending ?? 0) > 0) out.push({ key: `disk:${d.id}:smart`, severity: 'warning', title: `Disk ${d.id} has ${s.pending} sectors waiting to be checked`, detail: 'Often the first sign of a failing disk. A long self-test and a scrub will say more.' });
     const hot = held(`disk:${d.id}:temp`) ? COOL : HOT;
     if ((s.temperature ?? 0) >= hot) out.push({ key: `disk:${d.id}:temp`, severity: 'warning', title: `Disk ${d.id} is at ${s.temperature} °C`, detail: 'Warm disks die sooner. Check the airflow and the space between the disks.' });
+  }
+
+  // data that has never had a snapshot and has no policy to take one: a deleted or overwritten file there is gone
+  for (const d of i.datasets) {
+    if (d.referenced < WORTH_KEEPING || i.kept.has(d.name)) continue;
+    out.push({
+      key: `dataset:${d.name}:snapshots`,
+      severity: 'info',
+      title: `${d.name} has no snapshots`,
+      detail: 'Nothing there can be brought back after a mistake. Storage → Datasets sets how many to keep; acknowledge this if the data does not need them.',
+    });
   }
 
   if (i.backup?.lastResult === 'failed') {
@@ -160,12 +176,14 @@ export interface AlertDeps {
  * uses its last reading, so this never spins disks up.
  */
 export async function evaluate(deps: AlertDeps, now = Date.now()): Promise<Alerts> {
-  const [pools, disks] = await Promise.all([listPools(deps.run), listDisks(deps.run, deps.byIdDir)]);
+  const [pools, disks, datasets, snapshots] = await Promise.all([listPools(deps.run), listDisks(deps.run, deps.byIdDir), listDatasets(deps.run), listSnapshots(deps.run)]);
   const open = deps.db.openAlerts();
   const cs = conditions({
     pools,
     disks,
     open: new Map(open.map((a) => [a.key, a])),
+    datasets,
+    kept: new Set([...deps.db.policies().map((p) => p.dataset), ...snapshots.map((s) => s.dataset)]),
     backup: deps.db.configBackup(),
     replications: deps.db.replications().map((r) => ({ id: r.id, dataset: r.dataset, host: r.host, lastResult: r.lastResult, lastMessage: r.lastMessage })),
     scans: deps.db.scanJobs(undefined, 20),
