@@ -51,6 +51,33 @@ was built for. A drive newer than its agent shows a banner on every page
 asking for the upgrade above, and the Storage pages may misbehave until
 then. An agent newer than its drive is fine: verbs are only ever added.
 
+## What 0.10.0 changes on a box
+
+New verbs (`sessions`, `offsite` and its five), no changed ones: the
+contract stays 2, and a drive from before simply does not show the new
+sections. The drive that goes with it adds the pages.
+
+- **The data itself, off the box.** Chosen datasets backed up with restic
+  to S3-compatible storage, Backblaze B2 or a path, on a schedule, from
+  Storage → Copies (`docs/offsite.md`). The package recommends `restic`;
+  an update from the box installs it, a box installed from the stick
+  needs `sudo apt install restic` once.
+- **Who is connected.** `mk-nas sessions` and the Shares page list the SMB
+  sessions Samba has right now.
+- A dataset that holds data (64 MB or more), has never had a snapshot and
+  has no policy raises an info alert, `dataset:<name>:snapshots`.
+  Acknowledge it where that is on purpose.
+- The settings backup is read back before it replaces the last one: each
+  file opened, the databases checked, Samba's passwords and the ssh key
+  read. A run that does not read back fails and raises the existing alert.
+  It now also holds the off-site repository's keys and password.
+- A copy to another host looks at the target before it takes its
+  snapshot: an unreachable target no longer leaves one snapshot behind
+  per run, and a copy whose dataset has not changed since its own last
+  snapshot takes none and sends nothing (not for copies with children).
+- Finished jobs older than a year are dropped from the history (the
+  newest of each kind per target stays), and installs beyond the last 50.
+
 ## What 0.9.4 changes on a box
 
 Fixes from a look at the pilot box after six weeks and another read of the
