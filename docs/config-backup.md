@@ -11,7 +11,11 @@ demand with `backup.run`.
 What one backup does: build `<dataset>/mk-nas-config.new` (a consistent
 `VACUUM INTO` copy of each SQLite file, `pdbedit -e` for Samba's
 passwords, plain copies of the rest, a `manifest.json` with the time, the
-hostname and the file list), swap it in whole for the previous directory,
+hostname and the file list), read it back (every file opened the way a
+restore opens it, each database checked by SQLite, Samba listing its
+passwords from the export, ssh-keygen reading the key — a run that cannot
+be read back fails and the backup from before stays), swap it in whole
+for the previous directory,
 then `zfs snapshot <dataset>@config-<stamp>` and prune beyond the last 30.
 The history is ZFS's; the dataset replicates like any other, so the
 settings travel with the data.

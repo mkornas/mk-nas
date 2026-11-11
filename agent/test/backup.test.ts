@@ -36,6 +36,7 @@ test('backup: set, run, read; the snapshot per run and the last 30 kept; restore
     const snaps: string[] = [];
     const calls: string[][] = [];
     const spawned: string[][] = [];
+    const unreadable = { passdb: false };
     const run: Runner = async (argv): Promise<RunResult> => {
       calls.push(argv);
       const key = argv.join(' ');
@@ -51,10 +52,13 @@ test('backup: set, run, read; the snapshot per run and the last 30 kept; restore
         snaps.splice(snaps.indexOf(argv[2]), 1);
         return { argv, exitCode: 0, stdout: '', stderr: '' };
       }
-      if (argv[0] === 'pdbedit') {
+      if (argv[0] === 'pdbedit' && argv[1] === '-e') {
         await writeFile(argv[2].slice('tdbsam:'.length), 'TDB');
         return { argv, exitCode: 0, stdout: '', stderr: '' };
       }
+      // the read-back: Samba lists the exported passwords, ssh-keygen derives the public key
+      if (argv[0] === 'pdbedit' && argv[1] === '-L') return { argv, exitCode: unreadable.passdb ? 1 : 0, stdout: '', stderr: unreadable.passdb ? 'tdb is corrupt' : '' };
+      if (argv[0] === 'ssh-keygen' && argv[1] === '-y') return { argv, exitCode: 0, stdout: 'PUB', stderr: '' };
       return { argv, exitCode: 1, stdout: '', stderr: `fake: no such command: ${key}` };
     };
     const d: Deps = {
@@ -123,6 +127,16 @@ test('backup: set, run, read; the snapshot per run and the last 30 kept; restore
     }
     assert.equal(snaps.length, 30);
     assert.ok(!(await readdir(mp)).includes('mk-nas-config.new'));
+
+    // a run whose files do not read back is a failed run, and the backup from before stays where it was
+    const before = await readFile(join(out, 'manifest.json'), 'utf8');
+    unreadable.passdb = true;
+    res = await call('backup.run');
+    assert.match(!res.ok ? res.error.message : '', /passdb\.tdb in the backup does not read back: tdb is corrupt/);
+    assert.equal(db.configBackup()?.lastResult, 'failed');
+    assert.equal(await readFile(join(out, 'manifest.json'), 'utf8'), before);
+    assert.equal(snaps.length, 30, 'no snapshot of a backup that failed');
+    unreadable.passdb = false;
 
     res = await call('backup.restore', { dataset: 'tank/config', confirm: 'nope' });
     assert.match(!res.ok ? res.error.message : '', /type the name/);

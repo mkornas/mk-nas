@@ -213,6 +213,32 @@ export function mergeDriveEnv(current: string, backup: string): string {
   return out.length ? out.join('\n') + '\n' : '';
 }
 
+/**
+ * A backup nobody can read back is not one. Every file the manifest names is opened the way a restore opens it, both
+ * databases are checked by SQLite itself, Samba reads its passwords back and ssh-keygen the key — before the new
+ * directory takes the old one's place, so a bad run never replaces a good backup.
+ */
+export async function verifyBackup(run: Runner, dir: string, files: string[]): Promise<void> {
+  for (const f of files) await (await openSource(dir, f)).close();
+  for (const f of files.filter((f) => f.endsWith('.db'))) {
+    const db = new DatabaseSync(join(dir, f), { readOnly: true });
+    try {
+      const [row] = db.prepare('PRAGMA quick_check').all() as { quick_check: string }[];
+      if (row?.quick_check !== 'ok') throw new Error(`${f} in the backup does not read back: ${row?.quick_check ?? 'no answer'}`);
+    } finally {
+      db.close();
+    }
+  }
+  if (files.includes('passdb.tdb')) {
+    const r = await run(['pdbedit', '-L', '-b', `tdbsam:${join(dir, 'passdb.tdb')}`]);
+    if (r.exitCode !== 0) throw new Error(`passdb.tdb in the backup does not read back: ${r.stderr.trim().split('\n').pop() || `pdbedit exited ${r.exitCode}`}`);
+  }
+  if (files.includes('ssh/id_ed25519')) {
+    const r = await run(['ssh-keygen', '-y', '-f', join(dir, 'ssh/id_ed25519')]);
+    if (r.exitCode !== 0) throw new Error('ssh/id_ed25519 in the backup is not a key ssh can read');
+  }
+}
+
 export async function readBackup(run: Runner, db: Db, cfg: BackupConfig): Promise<ConfigBackup> {
   const row = db.configBackup();
   const out: ConfigBackup = {
@@ -289,6 +315,7 @@ export async function runBackup(run: Runner, db: Db, cfg: BackupConfig, now = ne
     }
     const manifest: Manifest = { at: now.toISOString(), hostname: hostname(), files };
     await writeFile(join(fresh, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n', { mode: 0o600 });
+    await verifyBackup(run, fresh, [...files, 'manifest.json']);
     const old = `${dir}.old`;
     await rm(old, { recursive: true, force: true });
     if (await lstat(dir).catch(() => null)) await rename(dir, old);
@@ -300,7 +327,7 @@ export async function runBackup(run: Runner, db: Db, cfg: BackupConfig, now = ne
       .filter((s) => s.snapshot.startsWith('config-'))
       .sort((a, b) => Date.parse(a.creation) - Date.parse(b.creation));
     for (const s of mine.slice(0, Math.max(0, mine.length - KEEP))) await must(run, ['zfs', 'destroy', s.name]);
-    db.recordConfigBackup('ok', `${files.length} files`, now.getTime());
+    db.recordConfigBackup('ok', `${files.length} files, read back`, now.getTime());
   } catch (e) {
     db.recordConfigBackup('failed', (e as Error).message, now.getTime());
     throw e;
