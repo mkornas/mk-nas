@@ -121,12 +121,13 @@ try {
       await must(run, ['smartctl', '-j', '-t', 'long', d.path]);
       console.log(`long self-test started on ${id}`);
       await audit({ ts: now.toISOString(), verb: 'tick.smart-test', args: { disk: id }, ok: true, ms: 0 });
+      break;
     } catch (e) {
+      // the next disk gets its turn: one that never starts must not keep the others from theirs
       // not a failed tick: snapshots and scrubs went fine; the next night tries again and the audit says why
       console.error(`could not start a self-test on ${id}: ${(e as Error).message}`);
       await audit({ ts: now.toISOString(), verb: 'tick.smart-test', args: { disk: id }, ok: false, ms: 0, error: (e as Error).message });
     }
-    break;
   }
 } finally {
   db.close();
