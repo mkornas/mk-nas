@@ -1,7 +1,7 @@
 /**
  * Replication: a dataset pushed to another ZFS host over ssh. The plan is
  * pure — which send to do, given the snapshots on both sides and a resume
- * token — and `replicate` runs it: snapshot, look, send | ssh receive,
+ * token — and `replicate` runs it: look, snapshot, send | ssh receive,
  * prune, record. The send and the receive are two processes joined by a
  * pipe in Node; no shell on this side. The remote side runs what ssh is
  * given, argument by argument, all of them validated names.
@@ -14,7 +14,7 @@ import type { Db, StoredReplication } from './db.ts';
 import { BadArgs, datasetName } from './names.ts';
 import { stamp } from './policy.ts';
 import { must, type Runner } from './run.ts';
-import { listDatasets } from './zfs.ts';
+import { listDatasets, writtenSince } from './zfs.ts';
 
 export interface ReplConfig {
   keyFile: string;
@@ -256,10 +256,7 @@ export async function replicate(deps: ReplicateDeps, id: number): Promise<Job> {
       return fail(`replication ${id} is not valid (${(e as Error).message}); set it again`);
     }
     await ensureKey(run, cfg);
-    const latest = replName(id, deps.now?.() ?? new Date());
-    await must(run, ['zfs', 'snapshot', ...(r.recursive ? ['-r'] : []), `${r.dataset}@${latest}`]);
-    const localOut = await must(run, ['zfs', 'list', '-H', '-o', 'name', '-t', 'snapshot', '-s', 'creation', '-d', '1', r.dataset]);
-    const local = localOut.split('\n').filter(Boolean).map(shortName);
+    // the target first: one that is away fails the run before a snapshot is taken for it
     const remote = await remoteSnapshots(run, cfg, t, r.targetDataset);
     if (remote.error) return fail(remote.error);
     let token: string | null = null;
@@ -267,6 +264,21 @@ export async function replicate(deps: ReplicateDeps, id: number): Promise<Job> {
       const tok = await run(sshArgv(cfg, t, ['zfs', 'get', '-H', '-o', 'value', 'receive_resume_token', r.targetDataset]), { timeout: 60_000 });
       if (tok.exitCode === 0 && tok.stdout.trim() && tok.stdout.trim() !== '-') token = tok.stdout.trim();
     }
+    const alone = db.replications().filter((x) => x.dataset === r.dataset).length === 1;
+    const listLocal = async () =>
+      (await must(run, ['zfs', 'list', '-H', '-o', 'name', '-t', 'snapshot', '-s', 'creation', '-d', '1', r.dataset])).split('\n').filter(Boolean).map(shortName);
+    // an idle dataset costs the pool no write: when its newest snapshot is this copy's own, the target has it and nothing
+    // was written since, there is nothing to take and nothing to send (a recursive copy always looks: children have their own writes)
+    if (!token && !r.recursive) {
+      const newest = (await listLocal()).at(-1);
+      if (newest && ownSnapshots([newest], id, alone).length && remote.snapshots.includes(newest) && (await writtenSince(run, [r.dataset])).get(r.dataset) === 0) {
+        db.finishReplication(id, 'ok', 'nothing new to send');
+        return db.finishJob(job.id, 'done', 'nothing new to send');
+      }
+    }
+    const latest = replName(id, deps.now?.() ?? new Date());
+    await must(run, ['zfs', 'snapshot', ...(r.recursive ? ['-r'] : []), `${r.dataset}@${latest}`]);
+    const local = await listLocal();
     const p = plan(local, remote.snapshots, token, latest);
     if (p.kind === 'none') {
       db.finishReplication(id, 'ok', 'nothing new to send');
@@ -300,7 +312,6 @@ export async function replicate(deps: ReplicateDeps, id: number): Promise<Job> {
     if (result.exitCode !== 0) return fail(`${what}: ${result.stderr.split('\n').pop() || `exit ${result.exitCode}`}`);
     db.progressJob(job.id, total ?? last, total);
     // this replication's own snapshots (ownSnapshots) beyond `keep`, on both sides, oldest first; nothing else is ever destroyed
-    const alone = db.replications().filter((x) => x.dataset === r.dataset).length === 1;
     const mine = ownSnapshots(local, id, alone);
     if (!mine.includes(latest)) mine.push(latest);
     for (const old of mine.slice(0, Math.max(0, mine.length - r.keep))) {

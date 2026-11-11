@@ -78,7 +78,10 @@ test('a first run sends everything; the next one sends the difference and prunes
     const localSnaps: string[] = [];
     const remoteSnaps: string[] = [];
     let now = new Date('2026-09-12T20:00:00Z');
+    let written = 4096;
+    let away = false;
     const f = fake({
+      'zfs get -H -p -o name,value written tank/photos': () => `tank/photos\t${written}\n`,
       [`${DS} -r tank/photos`]: 'tank/photos\tfilesystem\t0\t100\t0\t/srv/locations/photos\tyes\t0\tlz4\t1.00x\toff\t131072\t1757600000\n',
       'zfs snapshot *': (argv) => {
         localSnaps.push(argv.at(-1)!.split('@')[1]);
@@ -86,7 +89,9 @@ test('a first run sends everything; the next one sends the difference and prunes
       },
       'zfs list -H -o name -t snapshot -s creation -d 1 tank/photos': () => localSnaps.map((s) => `tank/photos@${s}`).join('\n') + '\n',
       'ssh zfs list -H -o name -t snapshot -d 1 backup/photos': () =>
-        remoteSnaps.length
+        away
+          ? { argv: [], exitCode: 255, stdout: '', stderr: 'ssh: connect to host backup-host port 22: No route to host\n' }
+          : remoteSnaps.length
           ? { argv: [], exitCode: 0, stdout: remoteSnaps.map((s) => `backup/photos@${s}`).join('\n') + '\n', stderr: '' }
           : { argv: [], exitCode: 1, stdout: '', stderr: "cannot open 'backup/photos': dataset does not exist\n" },
       'ssh zfs get -H -o value receive_resume_token backup/photos': '-\n',
@@ -153,13 +158,37 @@ test('a first run sends everything; the next one sends the difference and prunes
     );
     assert.ok(!f.calls.some((c) => c.includes('-F')), 'never a forced receive');
 
+    // idle since our own newest snapshot, which the target has: nothing taken, nothing sent
+    const taken = localSnaps.length;
+    written = 0;
+    now = new Date('2026-09-12T22:30:00Z');
+    job = await replicate(deps, r.id);
+    assert.equal(job.state, 'done');
+    assert.equal(job.message, 'nothing new to send');
+    assert.equal(localSnaps.length, taken, 'no snapshot for a run with nothing to copy');
+    assert.equal(piped.length, 3);
+    // a snapshot someone took by hand since then is newer than ours: it is copied even with nothing written
+    localSnaps.push('by-hand');
+    job = await replicate(deps, r.id);
+    assert.match(job.message ?? '', /^incremental from repl-1-2026-09-12_22-00 to repl-1-2026-09-12_22-30/);
+    written = 4096;
+
+    // a target that is away: the run fails and leaves no snapshot behind
+    away = true;
+    const left = localSnaps.length;
+    job = await replicate(deps, r.id);
+    assert.equal(job.state, 'failed');
+    assert.match(job.message ?? '', /No route to host/);
+    assert.equal(localSnaps.length, left);
+    away = false;
+
     receiverDies = true;
     now = new Date('2026-09-12T23:00:00Z');
     job = await replicate(deps, r.id);
     assert.equal(job.state, 'failed');
     assert.match(job.message ?? '', /has been modified since/);
     assert.equal(db.replication(r.id)?.lastResult, 'failed');
-    assert.equal(db.jobs().length, 4);
+    assert.equal(db.jobs().length, 7);
     assert.equal(db.jobs(r.id)[0].state, 'failed', 'newest first');
   } finally {
     await rm(dir, { recursive: true, force: true });
