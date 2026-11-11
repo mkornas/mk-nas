@@ -9,6 +9,10 @@ One card per line, ranked top-down inside each column. `#p0`..`#p3` = priority, 
 
 ## Now
 
+- [ ] **A copy with nothing new still writes** replicate() takes a repl-<id> snapshot on every scheduled run before it looks whether anything changed, so an hourly copy of an idle dataset writes to the pool (and wakes its disks) every hour, and a target that is away leaves one snapshot per run until the next success; skip the run when written is 0 since this replication's last snapshot and the target has it #p3 #disks [[a-copy-with-nothing-new-still-writes]]
+- [ ] *Back up the data itself, off the box** replication to another mk-nas exists; add a cloud target (S3, Backblaze B2) with restic or rclone in a transient unit: a schedule, progress as a job, a restore path that is tested, and the credentials handled like the tunnel token (root-only .env, never returned); set up from the drive's Storage section #p2 #backup [[back-up-the-data-itself-off-the-box-replication-to-another-m]]
+- [ ] **November ideas, built** on feat/november-ideas in both repos, not committed: the no-snapshots alert, the settings backup read back, history pruning, the sessions verb; in mk-drive the weekly digest, the heartbeat, names from UniFi and Connected now. Still to do: commit, try on the box (smbstatus --json shape, a real UniFi key, restic 0.16), release as 0.10.0 with a new mk-drive #p1
+
 ## Next
 
 - [ ] **Phase 0 — baseline** Ubuntu Server 24.04 on a small PC with Cockpit + 45Drives ZFS and file-sharing plugins; mk-drive on the datasets; two weeks of use; write notes/missing.md with what is still missing #p1 #phase0
@@ -21,11 +25,9 @@ One card per line, ranked top-down inside each column. `#p0`..`#p3` = priority, 
 - [ ] *Disk spindown** an optional standby timer per pool disk (hdparm -S, kept across reboots), off by default, set on the Disks page; worth it only after 'Idle disks stay idle' #p3 #disks
 - [ ] *Disk temperatures over time** load the drivetemp module so SATA temperatures come from hwmon in the 5 s vitals (no smartctl, a sleeping disk is not woken), and show each disk's temperature with a half-hour sparkline on the overview #p3 #disks
 - [ ] **Found by name from Windows** Windows Explorer's network view does not list the box: Samba runs without nmbd and there is no WS-Discovery; add wsdd (or wsdd2) to the package so the box shows up under Network, and say in the Shares page which name Windows uses. Found when Déjà Dup on Linux failed on the bare smb://mk-nas name (the pages now show <name>.local) #p3 #shares
-- [ ] *Back up the data itself, off the box** replication to another mk-nas exists; add a cloud target (S3, Backblaze B2) with restic or rclone in a transient unit: a schedule, progress as a job, a restore path that is tested, and the credentials handled like the tunnel token (root-only .env, never returned); set up from the drive's Storage section #p2 #backup
 - [ ] *Power cuts** with a UPS on USB (NUT), watch the battery and shut the box down cleanly before it dies; show the UPS on the Overview and let the owner set the threshold; nothing installed when there is no UPS #p2 #hardware
 - [ ] *Grow the pool** add a disk or a mirror to an existing pool, and keep a hot spare, from the Pools page instead of the shell: the plan shown before it runs (what ZFS will do, what cannot be undone), the typed pool name for anything destructive #p2 #pools
 - [ ] **Say when a restart is waiting** Ubuntu's updates leave /run/reboot-required and only the System card shows it: the pilot box ran kernel 6.8.0-142 with -147 installed, 45 days up, and nothing told the owner. An info alert (system:restart) once the restart has waited some days; decide how many and whether it is ever louder than info #p2 #alerts
-- [ ] **A copy with nothing new still writes** replicate() takes a repl-<id> snapshot on every scheduled run before it looks whether anything changed, so an hourly copy of an idle dataset writes to the pool (and wakes its disks) every hour, and a target that is away leaves one snapshot per run until the next success; skip the run when written is 0 since this replication's last snapshot and the target has it #p3 #disks
 - [ ] **Installed-Size depends on where the package is staged** deb.sh takes it from du -sk of a mktemp directory, and du counts blocks: staged on tmpfs (/tmp on a current Ubuntu desktop) it gives 140124, on CI's ext4 141980, so sign-release.sh refuses CI's package (0.9.4, signed with TMPDIR on ext4). Compute it from the files' sizes instead, the same on any filesystem #p2 #install
 
 ## Later

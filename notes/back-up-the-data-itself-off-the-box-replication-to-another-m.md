@@ -1,0 +1,3 @@
+# *Back up the data itself, off the box** replication to another mk-nas exists; add a cloud target (S3, Backblaze B2) with restic or rclone in a transient unit: a schedule, progress as a job, a restore path that is tested, and the credentials handled like the tunnel token (root-only .env, never returned); set up from the drive's Storage section
+
+- 2026-11-11 18:54 — Built on feat/november-ideas (not committed): restic to S3, B2 or a path; offsite verbs, runner, CLI, alert offsite:backup, docs/offsite.md; the card in mk-drive on Storage → Copies. Tested through real restic 0.18 against a repository on a path (zfs faked); not yet run on a box or against real S3/B2, nor with Ubuntu 24.04's restic 0.16.
