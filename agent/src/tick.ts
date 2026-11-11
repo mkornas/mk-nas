@@ -111,6 +111,7 @@ try {
     const c = db.updateCheck();
     console.log(c?.error ? `update check failed: ${c.error}` : `newest release: ${c?.latest?.version ?? 'none'}`);
   }
+  db.pruneHistory(now.getTime());
   // long self-tests only at night, and not even a SMART read for them by day
   const [devices, ids] = selfTestWindow(now) ? await Promise.all([parseLsblk(await must(run, LSBLK_ARGV)), byIdMap()]) : [[], new Map()];
   for (const d of devices) {

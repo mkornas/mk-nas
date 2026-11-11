@@ -36,3 +36,22 @@ test('a write waits for another process holding the database instead of failing 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('history: finished jobs older than a year go, the newest of each kind per target stays, a running one is never touched', () => {
+  const db = new Db(':memory:');
+  const day = 86_400_000;
+  const now = Date.parse('2026-11-11T00:00:00Z');
+  const old = db.startScan('scrub', 'tank', now - 800 * day);
+  db.finishJob(old.id, 'done', 'clean', now - 800 * day);
+  const failed = db.startScan('scrub', 'tank', now - 400 * day);
+  db.finishJob(failed.id, 'failed', '2 errors', now - 400 * day);
+  const stuck = db.startScan('resilver', 'tank', now - 500 * day);
+  const recent = db.startScan('scrub', 'cold', now - 30 * day);
+  db.finishJob(recent.id, 'done', 'clean', now - 30 * day);
+  for (let i = 0; i < 60; i++) db.finishUpdateRun(db.startUpdateRun(`0.0.${i}`, 1, now - (60 - i) * day).id, 'done', 'ok', now);
+  assert.equal(db.pruneHistory(now), 11);
+  assert.deepEqual(db.jobs().map((j) => j.id).sort(), [failed.id, stuck.id, recent.id].sort(), 'the last scrub of tank stays though it is old');
+  assert.equal(db.updateRun()?.version, '0.0.59');
+  assert.equal(db.pruneHistory(now), 0);
+  db.close();
+});

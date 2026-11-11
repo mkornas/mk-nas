@@ -566,6 +566,20 @@ export class Db {
     return this.job(id)!;
   }
 
+  /**
+   * History is for looking back, not for keeping: finished jobs older than a year go, except the newest of each kind
+   * per target (the last scrub of a pool is what its alert is judged by), and all but the last 50 installs.
+   */
+  pruneHistory(now = Date.now(), days = 365): number {
+    const jobs = this.db
+      .prepare(`DELETE FROM jobs WHERE state != 'running' AND started_at < ? AND id NOT IN (SELECT MAX(id) FROM jobs GROUP BY kind, target)`)
+      .run(now - days * 86_400_000).changes;
+    const runs = this.db
+      .prepare(`DELETE FROM update_runs WHERE state != 'running' AND id NOT IN (SELECT id FROM update_runs ORDER BY started_at DESC, id DESC LIMIT 50)`)
+      .run().changes;
+    return Number(jobs) + Number(runs);
+  }
+
   smbUsers(): SmbUser[] {
     return (this.db.prepare('SELECT * FROM smb_users ORDER BY name').all() as unknown as SmbUserRow[]).map(toSmbUser);
   }
