@@ -5,7 +5,7 @@
 import { createServer, type Server, type Socket } from 'node:net';
 import { chmodSync, chownSync, existsSync, readFileSync, unlinkSync } from 'node:fs';
 import type { NasError, Request, Response } from '../../shared/types.ts';
-import type { Audit } from './audit.ts';
+import { lenient, type Audit } from './audit.ts';
 import { BadArgs } from './names.ts';
 import { CommandError, type Runner } from './run.ts';
 import { isVerb, verbs, type Deps } from './verbs.ts';
@@ -42,15 +42,6 @@ function redacted(args: Record<string, unknown> | undefined): Record<string, unk
   if (!args || !SECRET_ARGS.some((k) => k in args)) return args;
   return { ...args, ...Object.fromEntries(SECRET_ARGS.filter((k) => k in args).map((k) => [k, '[redacted]'])) };
 }
-
-/**
- * The audit file may be unwritable (a full disk): the verb has run by then and its answer stands, so the line goes to
- * stderr (the journal) with the reason instead of taking the agent down as an unhandled rejection.
- */
-const lenient =
-  (audit: Audit): Audit =>
-  (line) =>
-    audit(line).catch((e: Error) => void console.error(`audit not written (${e.message}): ${JSON.stringify(line)}`));
 
 export async function handle(req: Request, deps: Deps, auditTo: Audit): Promise<Response> {
   const audit = lenient(auditTo);

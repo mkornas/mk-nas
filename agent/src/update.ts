@@ -3,14 +3,14 @@
  * update.install in a transient unit of its own, so the agent restarting
  * under the new package does not stop it. Every step lands in update_runs.
  */
-import { createAudit } from './audit.ts';
+import { createAudit, lenient } from './audit.ts';
 import { backupConfig, config, updateConfig } from './config.ts';
 import { runBackup } from './backup.ts';
 import { Db } from './db.ts';
 import { run } from './run.ts';
 import { installRelease, versionOf } from './updates.ts';
 
-const audit = createAudit(config.audit);
+const audit = lenient(createAudit(config.audit));
 const db = new Db(config.db);
 const started = Date.now();
 let version = '';

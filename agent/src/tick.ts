@@ -8,7 +8,7 @@
  * A dataset with no writes since its newest snapshot gets no new one. Prints one line per action; exits non-zero
  * if any failed.
  */
-import { createAudit } from './audit.ts';
+import { createAudit, lenient } from './audit.ts';
 import { backupConfig, config, netConfig, updateConfig } from './config.ts';
 import { backupDue, runBackup } from './backup.ts';
 import { Db } from './db.ts';
@@ -21,7 +21,7 @@ import { datasetName } from './names.ts';
 import { checkDue, checkForUpdate } from './updates.ts';
 import { getPool, listPools, listSnapshots, writtenSince } from './zfs.ts';
 
-const audit = createAudit(config.audit);
+const audit = lenient(createAudit(config.audit));
 const db = new Db(config.db);
 const now = new Date();
 let failed = 0;

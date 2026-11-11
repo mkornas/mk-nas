@@ -4,13 +4,13 @@
  * runs every scheduled one that is due (mk-nas-replication.timer, every
  * 15 minutes). Progress and results land in the jobs table for the UI.
  */
-import { createAudit } from './audit.ts';
+import { createAudit, lenient } from './audit.ts';
 import { config } from './config.ts';
 import { Db } from './db.ts';
 import { due, pipe, replicate } from './replication.ts';
 import { run } from './run.ts';
 
-const audit = createAudit(config.audit);
+const audit = lenient(createAudit(config.audit));
 const db = new Db(config.db);
 const alive = (pid: number) => {
   try {
