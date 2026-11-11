@@ -85,6 +85,9 @@ test('jobs and updates: a failed backup, replication or scrub, and a release wor
   assert.deepEqual(keys(input({ replications: [{ id: 3, dataset: 'tank/docs', host: 'other', lastResult: 'failed', lastMessage: null }] })), ['replication:3']);
   assert.deepEqual(keys(input({ scans: [job({})] })), ['scan:tank']);
   assert.deepEqual(keys(input({ scans: [job({ state: 'done' })] })), []);
+  assert.deepEqual(keys(input({ scans: [job({ id: 2, state: 'done' }), job({})] })), [], 'a clean scrub after a failed one clears it');
+  assert.deepEqual(keys(input({ scans: [job({ id: 3, state: 'running' }), job({ id: 2 }), job({ state: 'done' })] })), ['scan:tank'], 'a scrub still running does not excuse the failed one before it');
+  assert.deepEqual(keys(input({ scans: [job({ id: 2, state: 'done' }), job({ pool: 'vault', target: 'vault' })] })), ['scan:vault'], 'each pool by its own last scan');
   assert.deepEqual(keys(input({ update: { checkedAt: '', latest: { version: '0.9.0' }, error: null } })), ['update:available']);
   assert.deepEqual(keys(input({ update: { checkedAt: '', latest: { version: '0.8.2' }, error: null } })), [], 'already on it');
   assert.deepEqual(keys(input({ update: { checkedAt: '', latest: { version: '0.8.1' }, error: null } })), [], 'a box ahead of the newest release is not told an older one is out');

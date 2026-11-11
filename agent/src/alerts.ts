@@ -43,7 +43,7 @@ export interface ConditionInput {
   backup: { dataset: string; lastAt: string | null; lastResult: 'ok' | 'failed' | null; lastMessage: string | null } | null;
   /** Replications with their last result, `db.replications()`. */
   replications: { id: number; dataset: string; host: string; lastResult: 'ok' | 'failed' | null; lastMessage: string | null }[];
-  /** The newest finished scrub or resilver per pool, from the job rows. */
+  /** Scrub and resilver job rows, newest first; the newest finished one per pool is the one judged. */
   scans: Job[];
   /** `db.updateCheck()`: a newer release, or why the check failed. */
   update: { checkedAt: string; latest: { version: string } | null; error: string | null } | null;
@@ -99,7 +99,11 @@ export function conditions(i: ConditionInput): Condition[] {
     }
   }
 
+  // newest first: only the last finished scan of a pool counts, so a clean scrub after a failed one clears it
+  const judged = new Set<string>();
   for (const s of i.scans) {
+    if (s.state === 'running' || judged.has(s.target)) continue;
+    judged.add(s.target);
     if (s.state === 'failed') {
       out.push({ key: `scan:${s.target}`, severity: 'warning', title: `The last ${s.kind === 'scrub' ? 'scrub' : 'scan'} of ${s.target} did not come back clean`, detail: s.message ?? 'Run it again from the Pools page; if errors stay, the disks need attention.' });
     }
