@@ -140,6 +140,8 @@ test('check: recorded with the time; a failed check keeps the last release and s
     assert.equal(u.latest?.version, '0.6.0', 'the last known release stays');
     assert.match(u.error ?? '', /404/);
     assert.equal(u.checkedAt, new Date(t0 + 25 * 3_600_000).toISOString());
+    assert.ok(!checkDue(db, t0 + 25.5 * 3_600_000));
+    assert.ok(checkDue(db, t0 + 26 * 3_600_000), 'a failed check is tried again within the hour, not a day later');
     assert.equal((await readUpdate(db, cfg, '0.6.0', () => true)).available, false, 'nothing newer than what runs');
   } finally {
     db.close();

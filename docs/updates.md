@@ -9,7 +9,7 @@ downloaded is believed before the maintainer's signature checks out.
 (`/repos/mkornas/mk-nas/releases/latest`, then that release's
 `release.json`); `update.check` asks now. What it found and when is kept
 in the agent's database (`update_check`); a failed check keeps the last
-release it knew and says why. A release is *available* when it is newer
+release it knew, says why, and is tried again an hour later. A release is *available* when it is newer
 than what runs and signed.
 
 **The signature.** Releases are signed on the machine that cuts them, not

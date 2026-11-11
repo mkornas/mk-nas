@@ -44,6 +44,8 @@ export type Fetch = typeof fetch;
 export const SIGNER = 'releases@mk-nas';
 export const NAMESPACE = 'mk-nas-release';
 export const CHECK_EVERY_MS = 24 * 3_600_000;
+/** A check that failed (GitHub answering 504) is tried again this soon, not a day later. */
+export const RETRY_AFTER_MS = 3_600_000;
 const VERSION = /^\d{1,4}\.\d{1,4}\.\d{1,4}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 
@@ -149,7 +151,7 @@ export async function checkForUpdate(fetchFn: Fetch, db: Db, cfg: UpdateConfig, 
 
 export function checkDue(db: Db, now = Date.now()): boolean {
   const last = db.updateCheck();
-  return !last || now - Date.parse(last.checkedAt) >= CHECK_EVERY_MS;
+  return !last || now - Date.parse(last.checkedAt) >= (last.error ? RETRY_AFTER_MS : CHECK_EVERY_MS);
 }
 
 export async function readUpdate(db: Db, cfg: UpdateConfig, agent: string, alive: (pid: number) => boolean): Promise<Update> {
