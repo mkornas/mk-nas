@@ -51,6 +51,25 @@ was built for. A drive newer than its agent shows a banner on every page
 asking for the upgrade above, and the Storage pages may misbehave until
 then. An agent newer than its drive is fine: verbs are only ever added.
 
+## What 0.9.4 changes on a box
+
+Fixes from a look at the pilot box after six weeks and another read of the
+agent; no new verbs, the contract stays 2, and it pins the same mk-drive
+0.9.1, so the drive keeps running through the update.
+
+- "The last scrub did not come back clean" goes away with the next clean
+  scrub of that pool. It used to stay while the failed one was among the
+  last twenty scans.
+- A full OS disk (an audit log that cannot be written) no longer stops the
+  timer halfway: snapshots, pruning and scrubs go on, and the audit line
+  goes to the journal. The same for a copy to another host and an install.
+- The agent, the timer, a copy and an install share one database; one
+  that finds another writing waits for it instead of failing.
+- An update check that failed (GitHub not answering) is tried again within
+  the hour, not a day later.
+- A disk whose nightly long self-test cannot be started no longer keeps
+  the other disks from theirs.
+
 ## What 0.9.3 changes on a box
 
 - **An mk-nas update that does not change the drive no longer restarts it.**
