@@ -8,7 +8,7 @@ import type { Share } from '../../shared/types.ts';
 import { Db } from '../src/db.ts';
 import type { RunOptions, Runner, RunResult } from '../src/run.ts';
 import { handle } from '../src/server.ts';
-import { exportsFile, listShares, reapply, nfsClient, smbAccessOf, smbConf, smbUserName, type ShareConfig } from '../src/shares.ts';
+import { exportsFile, listSessions, listShares, parseSmbStatus, reapply, nfsClient, smbAccessOf, smbConf, smbUserName, type ShareConfig } from '../src/shares.ts';
 import type { Deps } from '../src/verbs.ts';
 
 const NET = {
@@ -618,4 +618,40 @@ test('two share changes at once: the files are written one after the other, so t
     db.close();
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test('sessions: smbstatus --json reduced to who, from where and to what; anything else is nobody', async () => {
+  const status = JSON.stringify({
+    timestamp: '2026-11-11T18:00:00.000000+0000',
+    version: '4.19.5-Ubuntu',
+    sessions: {
+      '1234567': {
+        session_id: '1234567',
+        username: 'alex',
+        groupname: 'mk-nas-smb',
+        remote_machine: 'laptop',
+        hostname: 'ipv4:192.0.2.20:51234',
+        session_dialect: 'SMB3_11',
+        encryption: { cipher: 'AES-128-GCM', degree: 'full' },
+      },
+      '99': { session_id: '99', username: 'sam', remote_machine: '2001:db8::7', hostname: 'ipv6:2001:db8::7:445', session_dialect: 'SMB3_02', encryption: { cipher: '-', degree: 'none' } },
+      '5': { session_id: '5', remote_machine: 'x' },
+    },
+    tcons: {
+      a: { service: 'photos', session_id: '1234567', machine: '192.0.2.20', connected_at: '2026-11-11T17:30:00.000000+0000' },
+      b: { service: 'files', session_id: '1234567', machine: '192.0.2.20', connected_at: '2026-11-11T17:00:00.000000+0000' },
+      c: { service: 'IPC$', session_id: '1234567', machine: '192.0.2.20', connected_at: '2026-11-11T16:00:00.000000+0000' },
+    },
+    open_files: {},
+  });
+  assert.deepEqual(parseSmbStatus(status), [
+    { user: 'alex', address: '192.0.2.20', shares: ['files', 'photos'], since: '2026-11-11T17:00:00.000Z', dialect: 'SMB3_11', encrypted: true },
+    { user: 'sam', address: '2001:db8::7', shares: [], since: null, dialect: 'SMB3_02', encrypted: false },
+  ]);
+  assert.deepEqual(parseSmbStatus('not json'), []);
+  assert.deepEqual(parseSmbStatus('{}'), []);
+  const down: Runner = async (argv) => ({ argv, exitCode: 1, stdout: '', stderr: 'smbd is not running' });
+  assert.deepEqual(await listSessions(down), []);
+  const up: Runner = async (argv) => ({ argv, exitCode: 0, stdout: status, stderr: '' });
+  assert.equal((await listSessions(up)).length, 2);
 });

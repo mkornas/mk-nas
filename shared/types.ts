@@ -68,6 +68,7 @@ export type Verb =
   | 'shares'
   | 'share.set'
   | 'share.remove'
+  | 'sessions'
   | 'users'
   | 'user.set'
   | 'user.smbPassword'
@@ -181,6 +182,20 @@ export interface SmbUser {
   /** Set once user.smbPassword ran at least once. */
   hasPassword: boolean;
   createdAt: string;
+}
+
+/** Someone connected over SMB right now, as Samba itself reports it (`smbstatus`). */
+export interface SmbSession {
+  user: string;
+  /** Where the connection comes from: an IPv4 or IPv6 address, without the port. */
+  address: string;
+  /** The shares this session has open, by their SMB names. */
+  shares: string[];
+  /** When the oldest of those was opened; null when Samba did not say. */
+  since: string | null;
+  /** SMB3_11 and the like. */
+  dialect: string | null;
+  encrypted: boolean;
 }
 
 export type PoolLayout = 'single' | 'mirror' | 'raidz1' | 'raidz2';
@@ -724,6 +739,8 @@ export interface Verbs {
   /** Creates or updates; regenerates smb.conf and the NFS exports and reloads the daemons. */
   'share.set': { args: ShareSetArgs; result: Share };
   'share.remove': { args: { dataset: string }; result: { removed: string } };
+  /** Who is connected over SMB right now; empty when Samba is not running. An agent before 0.10.0 does not know this verb. */
+  sessions: { args: Record<string, never>; result: SmbSession[] };
   users: { args: Record<string, never>; result: SmbUser[] };
   /** Makes sure the Unix and Samba user exist (no password yet). */
   'user.set': { args: { name: string }; result: SmbUser };

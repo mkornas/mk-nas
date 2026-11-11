@@ -6,7 +6,7 @@
  * (tests feed it rows); `apply` writes and reloads.
  */
 import { readFile, rename, stat, writeFile } from 'node:fs/promises';
-import type { Share, ShareSetArgs, SmbAccess, SmbUser } from '../../shared/types.ts';
+import type { Share, ShareSetArgs, SmbAccess, SmbSession, SmbUser } from '../../shared/types.ts';
 import type { Db, StoredShare } from './db.ts';
 import { BadArgs, datasetName } from './names.ts';
 import { must, type Runner } from './run.ts';
@@ -177,6 +177,46 @@ export async function listShares(run: Runner, db: Db): Promise<Share[]> {
   if (stored.length === 0) return [];
   const datasets = await listDatasets(run);
   return stored.map((s) => ({ ...s, mountpoint: datasets.find((d) => d.name === s.dataset)?.mountpoint ?? null }));
+}
+
+const text = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
+
+/**
+ * `smbstatus --json`, reduced to who is connected from where and to what. Samba's `hostname` is `ipv4:<address>:<port>`
+ * (or `ipv6:`); `remote_machine` is what the client called itself and is used only when that is missing. Anything that
+ * is not shaped as expected is left out rather than guessed.
+ */
+export function parseSmbStatus(out: string): SmbSession[] {
+  let j: { sessions?: Record<string, Record<string, unknown>>; tcons?: Record<string, Record<string, unknown>> };
+  try {
+    j = JSON.parse(out);
+  } catch {
+    return [];
+  }
+  const sessions: SmbSession[] = [];
+  for (const [id, s] of Object.entries(j.sessions ?? {})) {
+    const user = text(s.username);
+    const from = /^ipv[46]:(.+):\d+$/.exec(text(s.hostname) ?? '')?.[1] ?? text(s.remote_machine);
+    if (!user || !from) continue;
+    const mine = Object.values(j.tcons ?? {}).filter((t) => String(t.session_id) === String(s.session_id ?? id) && t.service !== 'IPC$');
+    const times = mine.map((t) => Date.parse(text(t.connected_at) ?? '')).filter((t) => !Number.isNaN(t));
+    const enc = s.encryption as { degree?: unknown } | undefined;
+    sessions.push({
+      user,
+      address: from,
+      shares: [...new Set(mine.map((t) => text(t.service)).filter((x): x is string => !!x))].sort(),
+      since: times.length ? new Date(Math.min(...times)).toISOString() : null,
+      dialect: text(s.session_dialect),
+      encrypted: enc?.degree === 'full' || enc?.degree === 'partial',
+    });
+  }
+  return sessions.sort((a, b) => a.user.localeCompare(b.user) || a.address.localeCompare(b.address));
+}
+
+/** Who is connected over SMB right now. Samba not running, or too old to answer in JSON, is nobody. */
+export async function listSessions(run: Runner): Promise<SmbSession[]> {
+  const r = await run(['smbstatus', '--json']);
+  return r.exitCode === 0 ? parseSmbStatus(r.stdout) : [];
 }
 
 /** One at a time: two changes at once would otherwise write through the same temporary file, and the older list could land last. */

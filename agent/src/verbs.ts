@@ -33,7 +33,7 @@ import { checkForUpdate, installable, readUpdate, type Fetch, type UpdateConfig 
 import { confirmNetwork, readNetwork, revertIfExpired, setNetwork, type NetConfig } from './network.ts';
 import { must, type Runner } from './run.ts';
 import { ensureKey, hostName, portNumber, replicate, setReplication, testTarget, userName, withRunning, type ReplConfig } from './replication.ts';
-import { listShares, removeShare, removeUser, setShare, setSmbPassword, setUser, type ShareConfig } from './shares.ts';
+import { listSessions, listShares, removeShare, removeUser, setShare, setSmbPassword, setUser, type ShareConfig } from './shares.ts';
 import {
   boolOf,
   createDataset,
@@ -381,6 +381,10 @@ export const verbs: { [V in Verb]: Handler<V> } = {
   async 'share.remove'(args, deps) {
     const a = only(args, ['dataset']);
     return removeShare(deps.run, deps.db, deps.shares, a.dataset);
+  },
+  async sessions(args, deps) {
+    only(args, []);
+    return listSessions(deps.run);
   },
   async users(args, deps) {
     only(args, []);

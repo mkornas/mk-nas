@@ -26,6 +26,7 @@
  *   mk-nas snapshot destroy <dataset@name> | rollback <dataset@name>
  *   mk-nas policy <dataset> <hourly> <daily> <weekly> <monthly>
  *   mk-nas shares | share <dataset> [--smb on|off] [--time-machine on|off] [--nfs on|off] [--clients 192.168.1.0/24,laptop] | unshare <dataset>
+ *   mk-nas sessions                          who is connected over SMB right now
  *   mk-nas users | user <name> (asks for the SMB password) | user remove <name>
  *   mk-nas replication key | test <user@host[:port]> <target-dataset> | list | jobs
  *   mk-nas replication add <dataset> <user@host[:port]> <target-dataset> [--schedule manual|hourly|daily|weekly] [--keep 3] [--recursive]
@@ -469,6 +470,14 @@ function print(verb: string, result: unknown): void {
           ['dataset', 'share', 'smb', 'who', 'nfs', 'path'],
         ),
       );
+    case 'sessions':
+      if (!r.length) return void console.log('nobody is connected over SMB');
+      return void console.log(
+        table(
+          r.map((s: any) => ({ user: s.user, from: s.address, shares: s.shares.join(' '), since: s.since ?? '', protocol: `${s.dialect ?? ''}${s.encrypted ? ' encrypted' : ''}` })),
+          ['user', 'from', 'shares', 'since', 'protocol'],
+        ),
+      );
     case 'share.set':
       return void console.log(
         `${r.dataset}: smb ${r.smb ? 'on' : 'off'}${r.timeMachine ? ' (time machine)' : ''}, nfs ${r.nfs ? (r.nfsClients.length ? `on for ${r.nfsClients.join(' ')}` : 'on, no clients yet') : 'off'}`,
@@ -553,6 +562,7 @@ const COMMANDS = [
   'snapshot',
   'policy',
   'shares',
+  'sessions',
   'share',
   'unshare',
   'users',
@@ -832,6 +842,7 @@ async function main(): Promise<void> {
       break;
     }
     case 'shares':
+    case 'sessions':
     case 'users':
       verb = cmd;
       break;
