@@ -44,7 +44,11 @@ to `docs/` as one file each.
   snapshots; `zfs send | ssh zfs receive` as two processes joined by a pipe in
   Node, never -F; the runner is its own process so a send survives an agent
   restart, run by `replication.run` and `mk-nas-replication.timer`; jobs in
-  SQLite), `src/cli.ts` the `mk-nas` command over the same socket. Every call
+  SQLite), `src/offsite.ts` + `src/offsite-run.ts` the data itself off the box
+  (restic to S3, B2 or a path from a fixed-name snapshot per dataset; the keys
+  and the repository password in one root-only file, in restic's environment
+  only, the password returned once when the agent made it; `docs/offsite.md`),
+  `src/cli.ts` the `mk-nas` command over the same socket. Every call
   is audited. The unit must not use ProtectHome/PrivateTmp: a mount namespace
   would hide the agent's mounts from the host. `npm test` runs the fixture
   tests anywhere; the file-vdev pool test needs root and zfs (`sudo npm

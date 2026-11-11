@@ -9,6 +9,8 @@ import type {
   Alert,
   AlertSeverity,
   Job,
+  Offsite,
+  OffsiteSchedule,
   Policy,
   PolicySetArgs,
   Release,
@@ -37,6 +39,15 @@ const SCHEMA = [
     id INTEGER PRIMARY KEY CHECK (id = 1),
     dataset TEXT NOT NULL,
     last_at INTEGER,
+    last_result TEXT,
+    last_message TEXT
+  )`,
+  `CREATE TABLE IF NOT EXISTS offsite (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    repository TEXT NOT NULL,
+    datasets TEXT NOT NULL,
+    schedule TEXT NOT NULL,
+    last_run_at INTEGER,
     last_result TEXT,
     last_message TEXT
   )`,
@@ -196,6 +207,7 @@ interface JobRow {
 
 /** A replication as stored (the running job is joined in by the verb). */
 export type StoredReplication = Omit<Replication, 'running'>;
+export type StoredOffsite = Pick<Offsite, 'repository' | 'datasets' | 'schedule' | 'lastRunAt' | 'lastResult' | 'lastMessage'> & { repository: string };
 
 /** A share as stored: everything but the mountpoint, which ZFS knows. */
 export type StoredShare = Omit<Share, 'mountpoint'>;
@@ -273,6 +285,52 @@ export class Db {
 
   recordConfigBackup(result: 'ok' | 'failed', message: string, now = Date.now()): void {
     this.db.prepare('UPDATE config_backup SET last_at = ?, last_result = ?, last_message = ? WHERE id = 1').run(now, result, message);
+  }
+
+  /** The off-site backup: where it goes, what goes, how often, and how the last run ended. */
+  offsite(): StoredOffsite | null {
+    const row = this.db.prepare('SELECT * FROM offsite WHERE id = 1').get() as
+      | { repository: string; datasets: string; schedule: OffsiteSchedule; last_run_at: number | null; last_result: 'ok' | 'failed' | null; last_message: string | null }
+      | undefined;
+    if (!row) return null;
+    let datasets: string[] = [];
+    try {
+      const d = JSON.parse(row.datasets) as unknown;
+      if (Array.isArray(d)) datasets = d.filter((x): x is string => typeof x === 'string');
+    } catch {
+      /* an unreadable list is an empty one: the run says there is nothing to back up */
+    }
+    return {
+      repository: row.repository,
+      datasets,
+      schedule: row.schedule,
+      lastRunAt: row.last_run_at ? new Date(row.last_run_at).toISOString() : null,
+      lastResult: row.last_result,
+      lastMessage: row.last_message,
+    };
+  }
+
+  /** null forgets it; a change keeps the last result. */
+  setOffsite(o: { repository: string; datasets: string[]; schedule: OffsiteSchedule } | null): void {
+    if (!o) {
+      this.db.prepare('DELETE FROM offsite WHERE id = 1').run();
+      return;
+    }
+    this.db
+      .prepare(
+        `INSERT INTO offsite (id, repository, datasets, schedule) VALUES (1, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET repository = excluded.repository, datasets = excluded.datasets, schedule = excluded.schedule`,
+      )
+      .run(o.repository, JSON.stringify(o.datasets), o.schedule);
+  }
+
+  finishOffsite(result: 'ok' | 'failed', message: string, now = Date.now()): void {
+    this.db.prepare('UPDATE offsite SET last_run_at = ?, last_result = ?, last_message = ? WHERE id = 1').run(now, result, message);
+  }
+
+  runningOffsite(): Job | null {
+    const row = this.db.prepare(`SELECT * FROM jobs WHERE kind = 'offsite' AND state = 'running' ORDER BY started_at DESC LIMIT 1`).get() as unknown as JobRow | undefined;
+    return row ? toJob(row) : null;
   }
 
   scrubPolicy(pool: string): ScrubPolicy | null {
@@ -483,10 +541,10 @@ export class Db {
     return this.job(Number(res.lastInsertRowid))!;
   }
 
-  /** Running replications whose process is gone (a reboot or a crash mid-send) are failed, so the next run is not blocked. Scans live in ZFS, not in a process. */
-  failDeadJobs(alive: (pid: number) => boolean, message: string, now = Date.now()): number {
+  /** Running jobs of a kind whose process is gone (a reboot or a crash mid-send) are failed, so the next run is not blocked. Scans live in ZFS, not in a process. */
+  failDeadJobs(alive: (pid: number) => boolean, message: string, now = Date.now(), kind: 'replication' | 'offsite' = 'replication'): number {
     let n = 0;
-    for (const row of this.db.prepare(`SELECT id, pid FROM jobs WHERE state = 'running' AND kind = 'replication'`).all() as unknown as {
+    for (const row of this.db.prepare(`SELECT id, pid FROM jobs WHERE state = 'running' AND kind = ?`).all(kind) as unknown as {
       id: number;
       pid: number | null;
     }[]) {

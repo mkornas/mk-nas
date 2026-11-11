@@ -17,6 +17,8 @@ export interface RunOptions {
   timeout?: number;
   /** Written to the tool's stdin, then closed. The only way a secret reaches a tool. */
   input?: string;
+  /** Added to the tool's environment. The other way a secret reaches a tool: never its command line. */
+  env?: Record<string, string>;
 }
 
 export type Runner = (argv: string[], opts?: RunOptions) => Promise<RunResult>;
@@ -33,7 +35,7 @@ export class CommandError extends Error {
 export const run: Runner = (argv, opts = {}) =>
   new Promise((resolve) => {
     const [cmd, ...args] = argv;
-    const env = { PATH: '/usr/sbin:/usr/bin:/sbin:/bin', LC_ALL: 'C' };
+    const env = { PATH: '/usr/sbin:/usr/bin:/sbin:/bin', LC_ALL: 'C', ...opts.env };
     const child = execFile(cmd, args, { timeout: opts.timeout ?? 60_000, maxBuffer: 16 * 1024 * 1024, env }, (err, stdout, stderr) => {
       if (!err) return resolve({ argv, exitCode: 0, stdout: String(stdout), stderr: String(stderr) });
       const e = err as Error & { code?: number | string };

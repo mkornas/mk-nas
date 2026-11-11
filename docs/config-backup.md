@@ -3,7 +3,8 @@
 Everything a NAS is, apart from the files, lives on the OS disk: the
 agent's database (policies, shares, copies, SMB users), Samba's password
 database, the ssh key the copies sign in with, the netplan file, the
-drive's `.env` and the drive's own database (its accounts). The OS disk is
+drive's `.env`, the drive's own database (its accounts) and the off-site
+repository's keys and password (`offsite.md`). The OS disk is
 the one disk without redundancy, so those go into a dataset of the
 person's choosing — `backup.set` — once a day from the timer's tick and on
 demand with `backup.run`.

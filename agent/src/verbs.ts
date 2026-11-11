@@ -9,7 +9,9 @@ import type {
   DatasetDestroyArgs,
   DatasetSetArgs,
   Health,
+  Job,
   NetworkSetArgs,
+  OffsiteSetArgs,
   PolicySetArgs,
   PoolCreateArgs,
   ReplicationSetArgs,
@@ -26,6 +28,7 @@ import type { EventLog } from './events.ts';
 import type { Vitals } from './system.ts';
 import { byIdMap, getSmart, listDisks, LSBLK_ARGV, parseLsblk, pickId, smartctlVersion, startSelfTest, useOf } from './disks.ts';
 import { readBackup, restoreBackup, runBackup, setBackup, type BackupConfig } from './backup.ts';
+import { listOffsiteSnapshots, readOffsite, removeOffsite, setOffsite, snapshotId, type OffsiteConfig } from './offsite.ts';
 import { BadArgs, datasetName, diskId, only, optional, poolName } from './names.ts';
 import { readPower, schedulePower } from './power.ts';
 import { readTunnel, removeTunnel, setTunnel, type TunnelConfig } from './tunnel.ts';
@@ -77,6 +80,8 @@ export interface Deps {
   updates?: UpdateConfig;
   /** Absent in tests that do not care. */
   tunnel?: TunnelConfig;
+  /** Absent in tests that do not care. */
+  offsite?: OffsiteConfig;
   /** GitHub, for the update check; a fake in tests. */
   fetch?: Fetch;
 }
@@ -103,6 +108,28 @@ const alive = (pid: number) => {
 function count(v: unknown, what: string): number {
   if (typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v > 1000) throw new BadArgs(`${what} must be a whole number from 0 to 1000`);
   return v;
+}
+
+function offsiteOf(deps: Deps): OffsiteConfig {
+  if (!deps.offsite) throw new Error('the off-site backup is not configured in this agent');
+  return deps.offsite;
+}
+
+/** The off-site runner is its own unit, like a replication: hours of upload must survive the agent restarting. */
+async function startOffsite(deps: Deps, argv: string[]): Promise<Job> {
+  const running = deps.db.runningOffsite();
+  if (running) {
+    if (argv[0] === 'backup') return running;
+    throw new BadArgs('a backup or a restore is running; wait for it to finish');
+  }
+  const before = Math.max(0, ...deps.db.jobs(undefined, 50).map((j) => j.id));
+  deps.spawn([process.execPath, new URL('./offsite-run.ts', import.meta.url).pathname, ...argv]);
+  for (let i = 0; i < 60; i++) {
+    await new Promise((r) => setTimeout(r, 50));
+    const job = deps.db.runningOffsite() ?? deps.db.jobs(undefined, 50).find((j) => j.kind === 'offsite' && j.id > before);
+    if (job) return job;
+  }
+  throw new Error('the off-site runner did not start');
 }
 
 type Handler<V extends Verb> = (args: Record<string, unknown> | undefined, deps: Deps) => Promise<Verbs[V]['result']>;
@@ -300,6 +327,31 @@ export const verbs: { [V in Verb]: Handler<V> } = {
   async 'backup.restore'(args, deps) {
     const a = only(args, ['dataset', 'confirm']);
     return restoreBackup(deps.run, { ...deps.backup, spawn: deps.spawn }, a.dataset, a.confirm);
+  },
+  async offsite(args, deps) {
+    only(args, []);
+    return readOffsite(deps.run, deps.db, offsiteOf(deps));
+  },
+  async 'offsite.set'(args, deps) {
+    const a = only(args, ['repository', 'datasets', 'schedule', 'credentials', 'password']);
+    return setOffsite(deps.run, deps.db, offsiteOf(deps), a as unknown as OffsiteSetArgs);
+  },
+  async 'offsite.remove'(args, deps) {
+    only(args, []);
+    return removeOffsite(deps.run, deps.db, offsiteOf(deps));
+  },
+  async 'offsite.run'(args, deps) {
+    only(args, []);
+    if (!deps.db.offsite()) throw new BadArgs('no off-site backup is set up');
+    return startOffsite(deps, ['backup']);
+  },
+  async 'offsite.snapshots'(args, deps) {
+    only(args, []);
+    return listOffsiteSnapshots({ run: deps.run, db: deps.db, cfg: offsiteOf(deps) });
+  },
+  async 'offsite.restore'(args, deps) {
+    const a = only(args, ['snapshot', 'dataset']);
+    return startOffsite(deps, ['restore', snapshotId(a.snapshot), datasetName(a.dataset)]);
   },
   async policies(args, deps) {
     only(args, []);

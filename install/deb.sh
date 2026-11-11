@@ -60,6 +60,7 @@ Priority: optional
 Architecture: amd64
 Installed-Size: $size
 Depends: zfsutils-linux, smartmontools, samba, nfs-kernel-server, avahi-daemon, docker.io, docker-compose-v2, openssh-client, ca-certificates, xz-utils
+Recommends: restic
 Maintainer: Mateusz Kornaś <hi@mateuszkornas.com>
 Homepage: https://github.com/mkornas/mk-nas
 Description: the mk-nas agent: ZFS, shares and copies for mk-drive

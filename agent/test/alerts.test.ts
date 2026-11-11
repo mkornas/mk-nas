@@ -26,6 +26,7 @@ const input = (over: Partial<ConditionInput> = {}): ConditionInput => ({
   datasets: [],
   kept: new Set(),
   backup: null,
+  offsite: null,
   replications: [],
   scans: [],
   update: null,

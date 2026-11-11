@@ -5,7 +5,7 @@
 import { spawn } from 'node:child_process';
 import { hostname } from 'node:os';
 import { createAudit } from './audit.ts';
-import { backupConfig, config, netConfig, tunnelConfig, updateConfig } from './config.ts';
+import { backupConfig, config, netConfig, offsiteConfig, tunnelConfig, updateConfig } from './config.ts';
 import { Db } from './db.ts';
 import { detachedArgv } from './detach.ts';
 import { EventLog } from './events.ts';
@@ -63,6 +63,7 @@ const server = await listen({
     backup: backupConfig(config),
     updates: updateConfig(config),
     tunnel: tunnelConfig(config),
+    offsite: offsiteConfig(config),
     spawn: (argv) => {
       const env: Record<string, string> = {
         PATH: '/usr/sbin:/usr/bin:/sbin:/bin',
@@ -75,6 +76,8 @@ const server = await listen({
         MK_NAS_EXPORTS: config.exportsFile,
         MK_NAS_SMB_GROUP: config.smbGroup,
         MK_NAS_DRIVE_ENV: config.driveEnv,
+        MK_NAS_OFFSITE_SECRETS: config.offsiteSecrets,
+        MK_NAS_OFFSITE_CACHE: config.offsiteCache,
         NODE_NO_WARNINGS: '1',
       };
       // the owner comes from the .env the job reads itself (a restore may have just changed it), unless it was overridden here

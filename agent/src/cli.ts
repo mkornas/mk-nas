@@ -10,6 +10,8 @@
  *   mk-nas jobs [pool]                       every job, or one pool's scrubs and resilvers
  *   mk-nas events [--all]                    what ZFS reported, newest first (--all: the routine ones too)
  *   mk-nas system                            the box at a glance: load, cpu, memory, network and disk rates, temperatures
+ *   mk-nas offsite | offsite set <repository> <dataset>... [--schedule manual|daily|weekly] [--existing] | offsite run
+ *   mk-nas offsite snapshots | offsite restore <snapshot-id> <dataset> | offsite remove   (the data itself, to S3, B2 or a path; docs/offsite.md)
  *   mk-nas backup | backup set <dataset>|off | backup now | backup restore <dataset>   (asks you to type the dataset)
  *   mk-nas update | update check | update install <version>   the newest release, and installing it (signed ones only)
  *   mk-nas network | network hostname <name> | network keep
@@ -500,6 +502,23 @@ function print(verb: string, result: unknown): void {
       return void console.log(r.publicKey);
     case 'replication.test':
       return void console.log(`${r.ok ? 'OK' : 'NOT OK'}: ${r.message}`);
+    case 'offsite':
+    case 'offsite.set':
+    case 'offsite.remove':
+      if (!r.available) console.log('restic is not installed: sudo apt install restic');
+      if (!r.repository) return void console.log('no off-site backup: mk-nas offsite set <repository> <dataset>...');
+      console.log(`${r.datasets.join(' ')} → ${r.repository}, ${r.schedule}`);
+      console.log(r.running ? `running: ${r.running.message ?? ''} ${r.running.progress ?? '?'}%` : r.lastRunAt ? `last run ${r.lastRunAt.replace('T', ' ').slice(0, 16)}: ${r.lastResult}, ${r.lastMessage}` : 'never ran');
+      if (r.password) {
+        console.log(`\nThe repository password, shown this once:\n\n  ${r.password}\n`);
+        console.log('Write it down somewhere that is not this box. Without it nothing in the repository can be read.');
+      }
+      return;
+    case 'offsite.run':
+    case 'offsite.restore':
+      return void console.log(`job ${r.id} started: ${r.target} (mk-nas offsite shows how it goes)`);
+    case 'offsite.snapshots':
+      return void console.log(table(r.map((x: any) => ({ id: x.id, dataset: x.dataset, taken: x.time.replace('T', ' ').slice(0, 16) })), ['id', 'dataset', 'taken']));
     case 'replications':
       return void console.log(
         table(
@@ -568,6 +587,7 @@ const COMMANDS = [
   'users',
   'user',
   'replication',
+  'offsite',
   'network',
   'update',
   'setup-code',
@@ -911,6 +931,34 @@ async function main(): Promise<void> {
         verb = sub === 'run' ? 'replication.run' : 'replication.remove';
         args = { id: Number(rest[1]) };
       } else usage('replication key | test | list | jobs | add | run | remove');
+      break;
+    }
+    case 'offsite': {
+      const sub = rest[0];
+      if (!sub) verb = 'offsite';
+      else if (sub === 'run') verb = 'offsite.run';
+      else if (sub === 'snapshots') verb = 'offsite.snapshots';
+      else if (sub === 'remove') verb = 'offsite.remove';
+      else if (sub === 'restore') {
+        if (!rest[1] || !rest[2]) usage('offsite restore <snapshot-id> <dataset>   (into a new restored-<date> directory there)');
+        verb = 'offsite.restore';
+        args = { snapshot: rest[1], dataset: rest[2] };
+      } else if (sub === 'set') {
+        const { flags, words } = opts(rest.slice(1));
+        if (words.length < 2) usage('offsite set <repository> <dataset>... [--schedule manual|daily|weekly] [--existing]');
+        verb = 'offsite.set';
+        args = { repository: words[0], datasets: words.slice(1) };
+        if (typeof flags.schedule === 'string') args.schedule = flags.schedule;
+        // the keys are asked for, never taken from the command line (it would sit in the shell's history)
+        const keys = words[0].startsWith('s3:') ? ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY'] : words[0].startsWith('b2:') ? ['B2_ACCOUNT_ID', 'B2_ACCOUNT_KEY'] : [];
+        const credentials: Record<string, string> = {};
+        for (const k of keys) {
+          const v = await secret(`${k} (empty keeps the stored one): `);
+          if (v) credentials[k] = v;
+        }
+        if (Object.keys(credentials).length) args.credentials = credentials;
+        if (flags.existing) args.password = await secret('The repository password: ');
+      } else usage('offsite | offsite set | run | snapshots | restore | remove');
       break;
     }
     case 'call':

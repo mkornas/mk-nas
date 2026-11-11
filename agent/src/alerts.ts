@@ -46,6 +46,8 @@ export interface ConditionInput {
   kept: Set<string>;
   /** The last settings backup, `db.configBackup()`. */
   backup: { dataset: string; lastAt: string | null; lastResult: 'ok' | 'failed' | null; lastMessage: string | null } | null;
+  /** The off-site backup's last result, `db.offsite()`. */
+  offsite: { lastResult: 'ok' | 'failed' | null; lastMessage: string | null } | null;
   /** Replications with their last result, `db.replications()`. */
   replications: { id: number; dataset: string; host: string; lastResult: 'ok' | 'failed' | null; lastMessage: string | null }[];
   /** Scrub and resilver job rows, newest first; the newest finished one per pool is the one judged. */
@@ -107,6 +109,10 @@ export function conditions(i: ConditionInput): Condition[] {
 
   if (i.backup?.lastResult === 'failed') {
     out.push({ key: 'backup:settings', severity: 'warning', title: 'The settings backup failed', detail: i.backup.lastMessage ?? 'The last run did not finish. Storage → Settings backup says where it writes.' });
+  }
+
+  if (i.offsite?.lastResult === 'failed') {
+    out.push({ key: 'offsite:backup', severity: 'warning', title: 'The off-site backup failed', detail: i.offsite.lastMessage ?? 'The last run did not finish.' });
   }
 
   for (const r of i.replications) {
@@ -185,6 +191,7 @@ export async function evaluate(deps: AlertDeps, now = Date.now()): Promise<Alert
     datasets,
     kept: new Set([...deps.db.policies().map((p) => p.dataset), ...snapshots.map((s) => s.dataset)]),
     backup: deps.db.configBackup(),
+    offsite: deps.db.offsite(),
     replications: deps.db.replications().map((r) => ({ id: r.id, dataset: r.dataset, host: r.host, lastResult: r.lastResult, lastMessage: r.lastMessage })),
     scans: deps.db.scanJobs(undefined, 20),
     update: deps.db.updateCheck(),

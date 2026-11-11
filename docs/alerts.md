@@ -15,6 +15,7 @@ what carries them to a person.
 | `disk:<id>:temp` | 55 °C or hotter | warning |
 | `scan:<pool>` | the last scrub or resilver did not come back clean | warning |
 | `replication:<id>` | the last copy to another host failed | warning |
+| `offsite:backup` | the last backup to the off-site repository failed | warning |
 | `backup:settings` | the last settings backup failed | warning |
 | `dataset:<name>:snapshots` | it holds data (64 MB or more), has no snapshot of any kind and no policy to take one | info |
 | `update:available` | a newer signed release is out | info |

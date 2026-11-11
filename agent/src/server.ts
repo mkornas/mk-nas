@@ -35,8 +35,8 @@ export function toError(err: unknown): NasError {
   return { code: 'internal', message: err instanceof Error ? err.message : String(err) };
 }
 
-/** What the audit line shows as args: everything but the secrets a verb takes (an SMB password, a tunnel token). */
-const SECRET_ARGS = ['password', 'token'];
+/** What the audit line shows as args: everything but the secrets a verb takes (an SMB password, a tunnel token, storage keys). */
+const SECRET_ARGS = ['password', 'token', 'credentials'];
 
 function redacted(args: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
   if (!args || !SECRET_ARGS.some((k) => k in args)) return args;

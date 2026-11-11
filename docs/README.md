@@ -21,5 +21,6 @@ Proposed decisions live in `PLAN.md` §2 until they are confirmed.
 | `updates.md` | updates from the box: a daily check, releases signed off CI, a verified install in its own unit |
 | `power.md` | reboot and shut down: the typed hostname, a timer a few seconds out, what is running first |
 | `first-install.md` | the hands-on guide: stick, BIOS, install, pool, datasets, shares, settings backup, living with it |
+| `offsite.md` | the data itself off the box: restic to S3, B2 or a path, the password said once, a restore that writes over nothing |
 | `config-backup.md` | the box's settings kept in a dataset, daily; one restore after a dead OS disk |
 | `vm.md` | the QEMU test VM: make, reach, upgrade in place, drive by script |

@@ -14,7 +14,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
-      - run: sudo apt-get update && sudo apt-get install -y zfsutils-linux smartmontools
+      - run: sudo apt-get update && sudo apt-get install -y zfsutils-linux smartmontools restic
       - run: npm ci
         working-directory: agent
       - run: npm run typecheck

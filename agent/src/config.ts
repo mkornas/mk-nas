@@ -1,5 +1,6 @@
 /** Everything from the environment, read once. */
 import { readFileSync } from 'node:fs';
+import { hostname } from 'node:os';
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string };
 
@@ -67,6 +68,9 @@ export interface Config {
   driveRepo: string;
   updatesDir: string;
   releaseSigners: string;
+  /** The off-site backup: its root-only secrets file and restic's cache. */
+  offsiteSecrets: string;
+  offsiteCache: string;
 }
 
 export const config: Config = {
@@ -96,7 +100,12 @@ export const config: Config = {
   driveRepo: process.env.MK_NAS_DRIVE_REPO || 'mkornas/mk-drive',
   updatesDir: process.env.MK_NAS_UPDATES_DIR || '/var/lib/mk-nas/updates',
   releaseSigners: process.env.MK_NAS_RELEASE_SIGNERS || '/opt/mk-nas/install/release-signers',
+  offsiteSecrets: process.env.MK_NAS_OFFSITE_SECRETS || '/var/lib/mk-nas/offsite-secrets.json',
+  offsiteCache: process.env.MK_NAS_OFFSITE_CACHE || '/var/cache/mk-nas/restic',
 };
+
+/** The off-site backup as the agent and its runner see it. */
+export const offsiteConfig = (c: Config) => ({ secrets: c.offsiteSecrets, cache: c.offsiteCache, hostname: hostname() });
 
 /** The drive stack's tunnel: its .env line, the script that starts or stops the container, cloudflared's readiness on localhost. */
 export const tunnelConfig = (c: Config) => ({
@@ -127,6 +136,7 @@ export const backupConfig = (c: Config) => ({
   netplanFile: c.netplanFile,
   driveEnv: c.driveEnv,
   driveDb: c.driveDb,
+  offsiteSecrets: c.offsiteSecrets,
 });
 
 /** The network files as the agent and the tick see them. */

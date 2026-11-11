@@ -2,8 +2,8 @@
  * The box's settings, kept where the data is. Everything the OS disk holds
  * that a pool cannot: the agent's database (policies, shares, copies, SMB
  * users), Samba's password database, the ssh key the copies use, the
- * netplan file, the drive's .env and the drive's own database (its
- * accounts). Written into a dataset of the person's choosing, once a day
+ * netplan file, the drive's .env, the drive's own database (its
+ * accounts) and the off-site repository's keys and password. Written into a dataset of the person's choosing, once a day
  * and on demand, then snapshotted there (`config-<stamp>`, the last 30
  * kept) — so it replicates with everything else, and a dead OS disk is
  * the stick, `pool.import`, and one restore.
@@ -32,6 +32,8 @@ export interface BackupConfig {
   /** The drive's .env and database. */
   driveEnv: string;
   driveDb: string;
+  /** The off-site backup's keys and password; absent in tests that do not care. */
+  offsiteSecrets?: string;
   /** The runner that finishes a restore once the agent has stepped aside. */
   spawn: (argv: string[]) => void;
 }
@@ -301,6 +303,8 @@ export async function runBackup(run: Runner, db: Db, cfg: BackupConfig, now = ne
       [cfg.knownHosts, 'ssh/known_hosts'],
       [cfg.netplanFile, '90-mk-nas.yaml'],
       [cfg.driveEnv, 'mk-drive.env'],
+      // the off-site repository's password: a new OS disk can keep backing up to (and restore from) the same repository
+      ...(cfg.offsiteSecrets ? [[cfg.offsiteSecrets, 'offsite-secrets.json']] : []),
     ]) {
       if (!(await exists(from))) continue;
       await copyFile(from, join(fresh, to));
@@ -376,6 +380,8 @@ export async function restoreBackup(
       ['mk-nas.db', `${cfg.db}.restore`, 0o600],
       ['mk-drive.db', `${cfg.driveDb}.restore`, 0o600],
       ['passdb.tdb', passdb, 0o600],
+      // read strictly by offsite.ts: a value `offsite.set` would refuse is never used
+      ...(cfg.offsiteSecrets ? [['offsite-secrets.json', cfg.offsiteSecrets, 0o600]] : []),
     ] as [string, string, number][]
   ).filter(([f]) => has(f));
   // every source is opened before anything is written: a backup with a link in it restores nothing
