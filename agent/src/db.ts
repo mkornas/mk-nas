@@ -215,6 +215,8 @@ export class Db {
   constructor(file: string) {
     if (file !== ':memory:') mkdirSync(dirname(file), { recursive: true, mode: 0o750 });
     this.db = new DatabaseSync(file);
+    // the agent, the timer's tick, a replication and an install are separate processes on this one file: wait for the other's write instead of failing on it
+    this.db.exec('PRAGMA busy_timeout = 5000');
     this.db.exec('PRAGMA journal_mode = WAL');
     for (const s of SCHEMA) this.db.exec(s);
     // added after 0.2.0: the schema only ever gains columns, so an older agent ignores it
